@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dev-dist/
+.vercel/
+ml/data/
+ml/__pycache__/
+ml/.venv/
+test-results/
+playwright-report/
+*.log
+.DS_Store
+tsconfig.tsbuildinfo
