@@ -73,7 +73,9 @@ export class VoiceGuide {
       const start = performance.now();
       onItemStart?.(item, start);
       this.emit(item);
-      await this.utter(item);
+      // Speak in lowercase: TTS engines announce uppercase letters/words as
+      // "capital A", which is redundant. The caption keeps the original case.
+      await this.utter(item.toLowerCase());
       const elapsed = performance.now() - start;
       const remaining = intervalMs * this.timeScale - elapsed;
       if (remaining > 0) await sleep(remaining);

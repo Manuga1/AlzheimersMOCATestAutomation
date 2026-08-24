@@ -228,6 +228,81 @@ button.secondary {
   line-height: 1;
 }
 
+.score-card {
+  background: var(--card);
+  border: 2px solid #d8d2c6;
+  border-radius: 16px;
+  padding: 1.2rem 2.4rem;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.score-value {
+  font-size: 3.2rem;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1.1;
+}
+.score-caption {
+  font-size: 1rem;
+  color: var(--muted);
+}
+
+.verdict {
+  max-width: 46rem;
+  border-radius: 12px;
+  padding: 0.9rem 1.4rem;
+  font-size: 1.05rem;
+  line-height: 1.45;
+  border: 1.5px solid;
+}
+.verdict.good {
+  background: #e8f3e9;
+  border-color: var(--good);
+  color: #1d5220;
+}
+.verdict.warn {
+  background: #fdeee9;
+  border-color: var(--bad);
+  color: #7c2b1b;
+}
+
+.review-block {
+  background: var(--card);
+  border: 1.5px solid #d8d2c6;
+  border-radius: 14px;
+  padding: 0.9rem 1.4rem 1.1rem;
+}
+.review-title {
+  margin: 0 0 0.6rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.review-pair {
+  display: flex;
+  gap: 1.6rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.review-panel {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  background: #fbfaf7;
+  border: 1px solid #e6e1d6;
+  border-radius: 10px;
+  padding: 0.6rem;
+}
+.review-panel figcaption {
+  font-size: 0.85rem;
+  color: var(--muted);
+  letter-spacing: 0.04rem;
+  text-transform: uppercase;
+}
+
 .results-table {
   border-collapse: collapse;
   background: var(--card);

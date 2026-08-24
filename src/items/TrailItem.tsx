@@ -4,11 +4,11 @@ import { voiceGuide } from '../core/voiceGuide';
 import { scoreTrail, TRAIL_SEQUENCE, type TrailTap } from '../scoring/trail';
 import { useRunOnce } from './common';
 
-const STAGE_W = 860;
-const STAGE_H = 460;
+export const STAGE_W = 860;
+export const STAGE_H = 460;
 
 /** Approximate spatial scatter of the paper form's circles (relative coords). */
-const POSITIONS: Record<string, [number, number]> = {
+export const TRAIL_POSITIONS: Record<string, [number, number]> = {
   '1': [0.12, 0.72],
   A: [0.09, 0.3],
   '2': [0.3, 0.12],
@@ -69,8 +69,8 @@ export function TrailItem({ onComplete }: ItemProps): JSX.Element {
       <div className="trail-stage" style={{ width: STAGE_W, height: STAGE_H }}>
         <svg width={STAGE_W} height={STAGE_H} style={{ position: 'absolute', pointerEvents: 'none' }}>
           {TRAIL_SEQUENCE.slice(1, progress).map((label, i) => {
-            const [x1, y1] = POSITIONS[TRAIL_SEQUENCE[i]];
-            const [x2, y2] = POSITIONS[label];
+            const [x1, y1] = TRAIL_POSITIONS[TRAIL_SEQUENCE[i]];
+            const [x2, y2] = TRAIL_POSITIONS[label];
             return (
               <line
                 key={label}
@@ -84,7 +84,7 @@ export function TrailItem({ onComplete }: ItemProps): JSX.Element {
             );
           })}
         </svg>
-        {Object.entries(POSITIONS).map(([label, [x, y]]) => (
+        {Object.entries(TRAIL_POSITIONS).map(([label, [x, y]]) => (
           <button
             key={label}
             className={`trail-node ${doneSet.has(label as never) ? 'done' : ''} ${errorNode === label ? 'error' : ''}`}

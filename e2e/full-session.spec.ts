@@ -242,6 +242,20 @@ test('complete hands-free session scores 30/30', async ({ page }) => {
 
   await expect(page.getByTestId('total-score')).toHaveText(/30\s*\/\s*30/);
 
+  // Verdict banner: 30 is at/above the standard cutoff of 26.
+  await expect(page.getByTestId('verdict')).toContainText('At or above the standard cutoff');
+
+  // Qualitative drawing review: reference next to the participant's drawing.
+  await expect(page.getByTestId('review-trail')).toBeVisible();
+  await expect(page.getByTestId('review-cube')).toBeVisible();
+  await expect(page.getByTestId('review-clock')).toBeVisible();
+  await expect(page.getByTestId('review-cube').getByTestId('cube-model')).toBeVisible();
+  await expect(page.getByTestId('review-clock').getByTestId('clock-reference')).toBeVisible();
+  // The participant panels render the captured strokes as SVG polylines.
+  expect(
+    await page.getByTestId('review-clock').locator('polyline').count(),
+  ).toBeGreaterThan(3);
+
   // The clock must have been scored WITH the CNN (proves ONNX ran in-browser).
   await expect(page.getByTestId('result-clock')).not.toContainText('digit_cnn_unavailable');
 });
@@ -346,4 +360,11 @@ test('impaired responses produce a low score with review flags', async ({ page }
   // 3 raw points + 1 education adjustment
   await expect(page.getByTestId('total-score')).toHaveText(/4\s*\/\s*30/);
   await expect(page.getByTestId('results')).toContainText('education adjustment');
+
+  // Verdict banner: 4 is below the standard cutoff → follow-up wording.
+  await expect(page.getByTestId('verdict')).toContainText('Below the standard cutoff');
+
+  // Drawing review still renders for the imperfect drawings.
+  await expect(page.getByTestId('review-cube')).toBeVisible();
+  await expect(page.getByTestId('review-trail')).toBeVisible();
 });
