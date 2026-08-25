@@ -2,14 +2,24 @@ import { useEffect, useRef, useState } from 'react';
 import { captureSpeech, speechAvailable, type CaptureResult } from '../core/speechCapture';
 import { voiceGuide } from '../core/voiceGuide';
 
-/** Run an async item flow exactly once on mount. */
-export function useRunOnce(fn: () => void | Promise<void>): void {
+/**
+ * Run an async item flow exactly once on mount. The flow receives an
+ * `alive()` getter that turns false when the component unmounts (e.g. the
+ * item was skipped) — long flows check it after awaits so a stale flow stops
+ * speaking/listening instead of running to completion in the background.
+ */
+export function useRunOnce(fn: (alive: () => boolean) => void | Promise<void>): void {
   const ran = useRef(false);
+  const aliveRef = useRef(true);
   useEffect(() => {
+    aliveRef.current = true;
     if (!ran.current) {
       ran.current = true;
-      void fn();
+      void fn(() => aliveRef.current);
     }
+    return () => {
+      aliveRef.current = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 }

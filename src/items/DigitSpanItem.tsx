@@ -36,15 +36,17 @@ export function DigitSpanItem({ onComplete }: ItemProps): JSX.Element {
     return typed;
   };
 
-  useRunOnce(async () => {
+  useRunOnce(async (alive) => {
     const fwd = await collect(
       DIGITS_FORWARD,
       'I am going to say some numbers. When I am done, repeat them to me exactly as I said them.',
     );
+    if (!alive()) return;
     const bwd = await collect(
       DIGITS_BACKWARD,
       'Now I am going to say some more numbers. But this time, when I am done, repeat them to me in the backward order.',
     );
+    if (!alive()) return;
     onComplete({
       ...scoreDigitSpan(fwd, bwd, usedKeypad.current),
       response: { forward: fwd, backward: bwd },

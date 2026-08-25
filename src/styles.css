@@ -101,6 +101,21 @@ button.secondary {
   justify-content: center;
   gap: 0.8rem;
 }
+/* TESTING ONLY: removed together with TESTING_SKIP_ENABLED in App.tsx */
+.skip-button {
+  position: fixed;
+  top: 0.55rem;
+  right: 0.8rem;
+  z-index: 20;
+  background: #fff3e0;
+  color: #8a5300;
+  border: 1.5px dashed #c98a2b;
+  border-radius: 10px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
 .caption-bar.idle {
   background: #3d4d59;
   color: #c6d2da;

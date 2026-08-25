@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ConfigContext } from './configContext';
+import { abortActiveCaptures } from './core/speechCapture';
 import { voiceGuide } from './core/voiceGuide';
 import { addResult, finalizeSession, newSession, saveSession } from './core/session';
 import type { ItemId, ItemResult, ScoreResult, Session, SessionConfig } from './core/types';
@@ -20,24 +21,36 @@ import { AbstractionItem } from './items/AbstractionItem';
 import { RecallItem } from './items/RecallItem';
 import { OrientationItem } from './items/OrientationItem';
 
+/**
+ * TESTING ONLY — set to false (or delete SkipButton and this flag) before any
+ * real administration. Shows a skip control on onboarding and on every item;
+ * skipped items score 0 and are flagged `skipped_for_testing`.
+ */
+const TESTING_SKIP_ENABLED = true;
+
 export interface ItemProps {
   onComplete: (result: ScoreResult & { response?: unknown }) => void;
 }
 
-const ITEM_ORDER: { id: ItemId; label: string; component: (p: ItemProps) => JSX.Element }[] = [
-  { id: 'trail', label: 'Connecting circles', component: TrailItem },
-  { id: 'cube', label: 'Copying a shape', component: CubeItem },
-  { id: 'clock', label: 'Drawing a clock', component: ClockItem },
-  { id: 'naming', label: 'Naming animals', component: NamingItem },
-  { id: 'registration', label: 'Remembering words', component: RegistrationItem },
-  { id: 'digitspan', label: 'Repeating numbers', component: DigitSpanItem },
-  { id: 'vigilance', label: 'Listening for a letter', component: VigilanceItem },
-  { id: 'serial7', label: 'Subtracting numbers', component: Serial7Item },
-  { id: 'sentence', label: 'Repeating sentences', component: SentenceItem },
-  { id: 'fluency', label: 'Naming words', component: FluencyItem },
-  { id: 'abstraction', label: 'Finding similarities', component: AbstractionItem },
-  { id: 'recall', label: 'Remembering the words', component: RecallItem },
-  { id: 'orientation', label: 'Date and place', component: OrientationItem },
+const ITEM_ORDER: {
+  id: ItemId;
+  label: string;
+  max: number;
+  component: (p: ItemProps) => JSX.Element;
+}[] = [
+  { id: 'trail', label: 'Connecting circles', max: 1, component: TrailItem },
+  { id: 'cube', label: 'Copying a shape', max: 1, component: CubeItem },
+  { id: 'clock', label: 'Drawing a clock', max: 3, component: ClockItem },
+  { id: 'naming', label: 'Naming animals', max: 3, component: NamingItem },
+  { id: 'registration', label: 'Remembering words', max: 0, component: RegistrationItem },
+  { id: 'digitspan', label: 'Repeating numbers', max: 2, component: DigitSpanItem },
+  { id: 'vigilance', label: 'Listening for a letter', max: 1, component: VigilanceItem },
+  { id: 'serial7', label: 'Subtracting numbers', max: 3, component: Serial7Item },
+  { id: 'sentence', label: 'Repeating sentences', max: 2, component: SentenceItem },
+  { id: 'fluency', label: 'Naming words', max: 1, component: FluencyItem },
+  { id: 'abstraction', label: 'Finding similarities', max: 2, component: AbstractionItem },
+  { id: 'recall', label: 'Remembering the words', max: 5, component: RecallItem },
+  { id: 'orientation', label: 'Date and place', max: 6, component: OrientationItem },
 ];
 
 type Phase = { kind: 'setup' } | { kind: 'onboarding' } | { kind: 'item'; index: number } | { kind: 'results' };
@@ -46,20 +59,28 @@ export default function App(): JSX.Element {
   const [phase, setPhase] = useState<Phase>({ kind: 'setup' });
   const [session, setSession] = useState<Session | null>(null);
   const [itemStartedAt, setItemStartedAt] = useState(0);
+  // The index the flow currently accepts a completion for. A skipped item's
+  // still-running async flow (voice prompt, speech capture) may call
+  // onComplete later; this guard makes those late calls no-ops.
+  const currentIndexRef = useRef(-1);
+  const sessionRef = useRef<Session | null>(null);
 
   const startSession = (config: SessionConfig, flags: string[]) => {
     const s = { ...newSession(config), flags };
     setSession(s);
+    sessionRef.current = s;
     setPhase({ kind: 'onboarding' });
   };
 
   const beginItems = () => {
     setItemStartedAt(Date.now());
+    currentIndexRef.current = 0;
     setPhase({ kind: 'item', index: 0 });
   };
 
   const completeItem = (index: number, partial: ScoreResult & { response?: unknown }) => {
-    if (!session) return;
+    const current = sessionRef.current;
+    if (!current || index !== currentIndexRef.current) return;
     const item = ITEM_ORDER[index];
     const result: ItemResult = {
       itemId: item.id,
@@ -67,29 +88,61 @@ export default function App(): JSX.Element {
       finishedAt: Date.now(),
       ...partial,
     };
-    let next = addResult(session, result);
+    let next = addResult(current, result);
     if (index + 1 < ITEM_ORDER.length) {
+      sessionRef.current = next;
       setSession(next);
       void saveSession(next);
       setItemStartedAt(Date.now());
+      currentIndexRef.current = index + 1;
       setPhase({ kind: 'item', index: index + 1 });
     } else {
       next = finalizeSession(next);
+      sessionRef.current = next;
       setSession(next);
       void saveSession(next);
+      currentIndexRef.current = -1;
       setPhase({ kind: 'results' });
     }
   };
 
+  const skipCurrent = () => {
+    if (phase.kind === 'onboarding') {
+      voiceGuide.cancel();
+      abortActiveCaptures();
+      beginItems();
+      return;
+    }
+    if (phase.kind !== 'item') return;
+    voiceGuide.cancel();
+    abortActiveCaptures();
+    completeItem(phase.index, {
+      score: 0,
+      max: ITEM_ORDER[phase.index].max,
+      confidence: 0,
+      flags: ['skipped_for_testing'],
+    });
+  };
+
   const restart = () => {
     voiceGuide.cancel();
+    abortActiveCaptures();
     setSession(null);
+    sessionRef.current = null;
+    currentIndexRef.current = -1;
     setPhase({ kind: 'setup' });
   };
+
+  const showSkip = TESTING_SKIP_ENABLED && (phase.kind === 'onboarding' || phase.kind === 'item');
 
   return (
     <div className="app">
       <CaptionBar phase={phase} />
+      {showSkip && (
+        <button className="skip-button" data-testid="skip-button" onClick={skipCurrent}>
+          Skip ▸ (testing)
+        </button>
+      )}
       {phase.kind === 'setup' && <SetupScreen onStart={startSession} />}
       {phase.kind === 'onboarding' && <OnboardingScreen onReady={beginItems} />}
       {phase.kind === 'item' && (

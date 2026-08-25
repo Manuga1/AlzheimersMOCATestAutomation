@@ -38,16 +38,19 @@ export function AbstractionItem({ onComplete }: ItemProps): JSX.Element {
     return '';
   };
 
-  useRunOnce(async () => {
+  useRunOnce(async (alive) => {
     // Practice pair (unscored) with the one corrective prompt from the protocol.
     const practice = await askPair(
       'Tell me how an orange and a banana are alike. What do they have in common?',
     );
+    if (!alive()) return;
     if (!transcriptContains(practice, ['fruit', 'fruits'], 0.2)) {
       await voiceGuide.speak('Yes, and they are also both fruit.');
     }
     const a1 = await askPair('Now, tell me how a train and a bicycle are alike.');
+    if (!alive()) return;
     const a2 = await askPair('Now, tell me how a watch and a ruler are alike.');
+    if (!alive()) return;
     const answers = [
       { pairId: ABSTRACTION_PAIRS[0].id, transcript: a1 },
       { pairId: ABSTRACTION_PAIRS[1].id, transcript: a2 },

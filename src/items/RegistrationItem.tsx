@@ -14,12 +14,13 @@ import { ListeningIndicator, useRunOnce } from './common';
 export function RegistrationItem({ onComplete }: ItemProps): JSX.Element {
   const [listening, setListening] = useState(false);
 
-  useRunOnce(async () => {
+  useRunOnce(async (alive) => {
     const trials: { transcript: string; recalled: string[] }[] = [];
     await voiceGuide.speak(
       'This is a memory test. I am going to read you a list of five words that you will have to remember now, and later on. Listen carefully.',
     );
     for (let trial = 0; trial < 2; trial++) {
+      if (!alive()) return;
       if (trial === 1) {
         await voiceGuide.speak(
           'I am going to read the same list one more time. Try to remember and tell me as many words as you can, including words you said the first time.',
@@ -32,6 +33,7 @@ export function RegistrationItem({ onComplete }: ItemProps): JSX.Element {
         : { text: '', transcripts: [], alternatives: [], voiceActivityMs: null };
       trials.push({ transcript: res.text, recalled: matchRecalledWords(res.text).recalled });
     }
+    if (!alive()) return;
     await voiceGuide.speak('I will ask you to recall those words again at the end of the test.');
     onComplete({
       score: 0,

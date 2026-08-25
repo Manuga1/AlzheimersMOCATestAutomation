@@ -31,10 +31,11 @@ export function OrientationItem({ onComplete }: ItemProps): JSX.Element {
       setNeedTyped(placeholder);
     });
 
-  useRunOnce(async () => {
+  useRunOnce(async (alive) => {
     const answers = {} as OrientationAnswers;
     let typedUsed = false;
     for (const q of QUESTIONS) {
+      if (!alive()) return;
       const res = await askSpoken(q.prompt, {
         reprompt: 'Please say your answer now.',
         onListening: setListening,

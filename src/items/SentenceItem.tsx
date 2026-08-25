@@ -14,10 +14,11 @@ import { ListeningIndicator, useRunOnce } from './common';
 export function SentenceItem({ onComplete }: ItemProps): JSX.Element {
   const [listening, setListening] = useState(false);
 
-  useRunOnce(async () => {
+  useRunOnce(async (alive) => {
     const responses: { alternatives: string[] }[] = [];
     const flags: string[] = [];
     for (let i = 0; i < SENTENCES.length; i++) {
+      if (!alive()) return;
       await voiceGuide.speak(
         i === 0
           ? 'I am going to read you a sentence. Repeat it after me, exactly as I say it.'

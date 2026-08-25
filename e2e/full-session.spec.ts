@@ -275,6 +275,32 @@ test('complete hands-free session scores 30/30', async ({ page }) => {
   await expect(page.getByTestId('result-clock')).not.toContainText('digit_cnn_unavailable');
 });
 
+test('skip button (testing aid) skips onboarding and every item', async ({ page }) => {
+  test.setTimeout(180_000);
+  await installHarness(page, [], { vigilanceTaps: false });
+
+  await page.goto('/');
+  await page.getByTestId('setup-start').click();
+
+  // Skip straight past onboarding.
+  await page.getByTestId('skip-button').click();
+
+  const itemIds = [
+    'trail', 'cube', 'clock', 'naming', 'registration', 'digitspan', 'vigilance',
+    'serial7', 'sentence', 'fluency', 'abstraction', 'recall', 'orientation',
+  ];
+  for (const id of itemIds) {
+    await expect(page.getByTestId(`item-${id}`)).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('skip-button').click();
+  }
+
+  await expect(page.getByTestId('results')).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId('total-score')).toHaveText(/0\s*\/\s*30/);
+  // Every scored item carries the testing flag.
+  await expect(page.getByTestId('result-trail')).toContainText('skipped_for_testing');
+  await expect(page.getByTestId('result-orientation')).toContainText('skipped_for_testing');
+});
+
 test('impaired responses produce a low score with review flags', async ({ page }) => {
   test.setTimeout(300_000);
   const now = new Date();

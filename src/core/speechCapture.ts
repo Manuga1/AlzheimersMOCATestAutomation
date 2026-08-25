@@ -66,6 +66,13 @@ declare global {
   }
 }
 
+const activeCaptureAborts = new Set<() => void>();
+
+/** Immediately finish every in-flight capture (skip button, session restart). */
+export function abortActiveCaptures(): void {
+  for (const abort of [...activeCaptureAborts]) abort();
+}
+
 export async function captureSpeech(rawOpts: CaptureOptions): Promise<CaptureResult> {
   const Ctor = getRecognitionCtor();
   if (!Ctor) {
@@ -95,6 +102,7 @@ export async function captureSpeech(rawOpts: CaptureOptions): Promise<CaptureRes
     const finish = () => {
       if (closed) return;
       closed = true;
+      activeCaptureAborts.delete(finish);
       opts.onListening?.(false);
       try {
         rec?.abort();
@@ -171,6 +179,7 @@ export async function captureSpeech(rawOpts: CaptureOptions): Promise<CaptureRes
       }
     }, 250);
 
+    activeCaptureAborts.add(finish);
     startRecognition();
   });
 }

@@ -20,14 +20,16 @@ export function VigilanceItem({ onComplete }: ItemProps): JSX.Element {
   const tapsRef = useRef<number[]>([]);
   const lastTapRef = useRef(0);
 
-  useRunOnce(async () => {
+  useRunOnce(async (alive) => {
     await voiceGuide.speak(
       'I am going to read a list of letters. Every time I say the letter A, tap the large button once. If I say a different letter, do not tap.',
     );
+    if (!alive()) return;
     setActive(true);
     await voiceGuide.speakSequence(VIGILANCE_LETTERS, 1000, (letter, t) => {
       onsetsRef.current.push({ letter, t });
     });
+    if (!alive()) return;
     // Grace period so a tap on the final A still lands in its window.
     const scale = window.__ttsTimeScale ?? 1;
     await new Promise((r) => setTimeout(r, 1200 * scale));

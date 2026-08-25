@@ -16,15 +16,17 @@ export function NamingItem({ onComplete }: ItemProps): JSX.Element {
       setNeedTyped(true);
     });
 
-  useRunOnce(async () => {
+  useRunOnce(async (alive) => {
     const answers: { animalId: string; transcript: string; typed: boolean }[] = [];
     for (let i = 0; i < NAMING_ANIMALS.length; i++) {
+      if (!alive()) return;
       setIndex(i);
       setNeedTyped(false);
       const res = await askSpoken('Tell me the name of this animal.', {
         reprompt: 'Please say the name of the animal now.',
         onListening: setListening,
       });
+      if (!alive()) return;
       if (res.text) {
         answers.push({ animalId: NAMING_ANIMALS[i].id, transcript: res.text, typed: false });
       } else {

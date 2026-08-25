@@ -16,10 +16,11 @@ import { ListeningIndicator, useRunOnce } from './common';
 export function Serial7Item({ onComplete }: ItemProps): JSX.Element {
   const [listening, setListening] = useState(false);
 
-  useRunOnce(async () => {
+  useRunOnce(async (alive) => {
     await voiceGuide.speak(
       'Now, I will ask you to count by subtracting seven from one hundred, and then, keep subtracting seven from your answer until I tell you to stop. Say each number out loud. Begin now: what is one hundred minus seven?',
     );
+    if (!alive()) return;
     if (!speechAvailable()) {
       onComplete({
         score: 0,
@@ -36,6 +37,7 @@ export function Serial7Item({ onComplete }: ItemProps): JSX.Element {
       stopWhen: (text) => extractNumbers(text).length >= 5,
       onListening: setListening,
     });
+    if (!alive()) return;
     const numbers = extractNumbers(res.text).slice(0, 5);
     await voiceGuide.speak('Stop. Well done.');
     const responses: (number | null)[] = Array.from({ length: 5 }, (_, i) => numbers[i] ?? null);

@@ -31,10 +31,11 @@ type CueStage = 'free' | 'category' | 'multiple_choice' | 'not_recalled';
 export function RecallItem({ onComplete }: ItemProps): JSX.Element {
   const [listening, setListening] = useState(false);
 
-  useRunOnce(async () => {
+  useRunOnce(async (alive) => {
     await voiceGuide.speak(
       'Earlier in the test, I read you a list of five words and asked you to remember them. Tell me as many of those words as you can remember now.',
     );
+    if (!alive()) return;
     if (!speechAvailable()) {
       onComplete({
         score: 0,
@@ -57,6 +58,7 @@ export function RecallItem({ onComplete }: ItemProps): JSX.Element {
     const stages: Record<string, CueStage> = {};
     const cueTranscripts: Record<string, string[]> = {};
     for (const word of MEMORY_WORDS) {
+      if (!alive()) return;
       if (freeRecalled.has(word)) {
         stages[word] = 'free';
         continue;
