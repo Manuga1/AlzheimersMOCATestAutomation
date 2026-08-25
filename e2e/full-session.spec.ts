@@ -18,12 +18,8 @@ function speechScript(now: Date): string[] {
     // digit span forward, then backward (7-4-2 reversed)
     '2 1 8 5 4',
     '2 4 7',
-    // serial 7s
-    '93',
-    '86',
-    '79',
-    '72',
-    '65',
+    // serial 7s: all five numbers in one continuous response
+    '93 86 79 72 65',
     // sentence repetition
     'I only know that John is the one to help today',
     'The cat always hid under the couch when dogs were in the room',
@@ -52,6 +48,22 @@ async function drawStroke(page: Page, canvas: Locator, pts: [number, number][]):
   await page.mouse.down();
   for (const [x, y] of pts.slice(1)) {
     await page.mouse.move(box.x + x, box.y + y, { steps: 2 });
+  }
+  await page.mouse.up();
+}
+
+/** Drag the pen through the trail circles in the given label order. */
+async function dragTrail(page: Page, labels: string[]): Promise<void> {
+  const centers: { x: number; y: number }[] = [];
+  for (const label of labels) {
+    const box = await page.getByTestId(`trail-${label}`).boundingBox();
+    if (!box) throw new Error(`trail circle ${label} not visible`);
+    centers.push({ x: box.x + box.width / 2, y: box.y + box.height / 2 });
+  }
+  await page.mouse.move(centers[0].x, centers[0].y);
+  await page.mouse.down();
+  for (const c of centers.slice(1)) {
+    await page.mouse.move(c.x, c.y, { steps: 12 });
   }
   await page.mouse.up();
 }
@@ -153,20 +165,16 @@ async function installHarness(
       w.SpeechRecognition = MockRecognition;
 
       if (vigilanceTaps) {
-        // Auto-tapper for the vigilance item: tap whenever the caption shows "A".
-        const observer = new MutationObserver(() => {
-          const cap = document.querySelector('[data-testid="caption"]');
-          const txt = cap?.textContent?.trim() ?? '';
-          if (/\sA$/.test(txt) && txt.length <= 5) {
-            const btn = document.querySelector('[data-testid="vigilance-tap"]');
-            if (btn && !(btn as HTMLButtonElement).disabled) {
-              btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-            }
+        // Auto-tapper for the vigilance item: spoken content is never shown
+        // on screen, so listen to the voice guide's moca:speech event.
+        window.addEventListener('moca:speech', (ev) => {
+          const text = (ev as CustomEvent<{ text: string }>).detail?.text;
+          if (text !== 'A') return;
+          const btn = document.querySelector('[data-testid="vigilance-tap"]');
+          if (btn && !(btn as HTMLButtonElement).disabled) {
+            btn.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
           }
         });
-        window.addEventListener('DOMContentLoaded', () =>
-          observer.observe(document.body, { childList: true, subtree: true, characterData: true }),
-        );
       }
     },
     { speech: script, vigilanceTaps: opts.vigilanceTaps },
@@ -195,11 +203,12 @@ test('complete hands-free session scores 30/30', async ({ page }) => {
   await page.getByTestId('pen-next').click();
   await page.getByTestId('start-test').click();
 
-  // --- 1. Trail making
+  // --- 1. Trail making: drag the pen through the circles in order. The
+  // dotted example guides must be visible on the scored task.
   await expect(page.getByTestId('item-trail')).toBeVisible();
-  for (const t of ['1', 'A', '2', 'B', '3', 'C', '4', 'D', '5', 'E']) {
-    await page.getByTestId(`trail-${t}`).click();
-  }
+  await expect(page.getByTestId('trail-guide-1-A')).toBeVisible();
+  await expect(page.getByTestId('trail-guide-A-2')).toBeVisible();
+  await dragTrail(page, ['1', 'A', '2', 'B', '3', 'C', '4', 'D', '5', 'E']);
 
   // --- 2. Cube copy
   await expect(page.getByTestId('item-cube')).toBeVisible();
@@ -245,6 +254,12 @@ test('complete hands-free session scores 30/30', async ({ page }) => {
   // Verdict banner: 30 is at/above the standard cutoff of 26.
   await expect(page.getByTestId('verdict')).toContainText('At or above the standard cutoff');
 
+  // All five words freely recalled → full Memory Index Score, no cues needed.
+  await expect(page.getByTestId('memory-index')).toContainText('15 / 15');
+
+  // Spoken content is never mirrored to the screen.
+  await expect(page.getByTestId('caption')).toHaveCount(0);
+
   // Qualitative drawing review: reference next to the participant's drawing.
   await expect(page.getByTestId('review-trail')).toBeVisible();
   await expect(page.getByTestId('review-cube')).toBeVisible();
@@ -276,12 +291,8 @@ test('impaired responses produce a low score with review flags', async ({ page }
     // digit span: forward wrong length, backward not reversed
     '2 1 8 5',
     '7 4 2',
-    // serial 7s: none correct under the chaining rule
-    '90',
-    '85',
-    '80',
-    '75',
-    '70',
+    // serial 7s: one continuous response, none correct under the chaining rule
+    '90 85 80 75 70',
     // sentence repetition: both wrong
     'I know John helps',
     'the cat hid somewhere',
@@ -291,8 +302,15 @@ test('impaired responses produce a low score with review flags', async ({ page }
     'they are both yellow',
     'they both have wheels',
     'they both have numbers',
-    // delayed recall: 2 of 5
+    // delayed recall: 2 of 5 free; then the two-stage cues for the missing
+    // three words (velvet: category cue hit; church: both cues miss;
+    // daisy: category miss, multiple-choice hit)
     'face red',
+    'velvet',
+    'hmm',
+    'school',
+    'not sure',
+    'daisy',
     // orientation: everything wrong
     '1',
     wrongMonth,
@@ -317,11 +335,9 @@ test('impaired responses produce a low score with review flags', async ({ page }
   await page.getByTestId('pen-next').click();
   await page.getByTestId('start-test').click();
 
-  // Trail: two consecutive wrong taps → 0, then finish the pattern.
+  // Trail: dragging into two wrong circles in a row → 0, then finish.
   await expect(page.getByTestId('item-trail')).toBeVisible();
-  for (const t of ['1', '2', '3', 'A', '2', 'B', '3', 'C', '4', 'D', '5', 'E']) {
-    await page.getByTestId(`trail-${t}`).click();
-  }
+  await dragTrail(page, ['1', '2', '3', 'A', '2', 'B', '3', 'C', '4', 'D', '5', 'E']);
 
   // Cube: a flat square is not a cube → 0.
   const cubeCanvas = page.getByTestId('item-cube').getByTestId('drawing-canvas');
@@ -364,7 +380,15 @@ test('impaired responses produce a low score with review flags', async ({ page }
   // Verdict banner: 4 is below the standard cutoff → follow-up wording.
   await expect(page.getByTestId('verdict')).toContainText('Below the standard cutoff');
 
-  // Drawing review still renders for the imperfect drawings.
+  // Drawing review still renders for the imperfect drawings, with the cube's
+  // scoring checks spelled out for the interpreter.
   await expect(page.getByTestId('review-cube')).toBeVisible();
   await expect(page.getByTestId('review-trail')).toBeVisible();
+  await expect(page.getByTestId('review-cube-breakdown')).toContainText('edges detected');
+  await expect(page.getByTestId('review-clock-breakdown')).toContainText('numbers');
+
+  // Cued recall: face+red free (3+3), velvet via category cue (2),
+  // daisy via multiple choice (1), church not recovered (0) → MIS 9.
+  await expect(page.getByTestId('memory-index')).toContainText('9 / 15');
+  await expect(page.getByTestId('memory-index')).toContainText('velvet (category cue)');
 });

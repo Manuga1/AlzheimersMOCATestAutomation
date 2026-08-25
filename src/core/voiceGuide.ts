@@ -1,35 +1,49 @@
 /**
- * Voice guide: delivers every instruction aloud via speech synthesis with
- * synchronized on-screen captions (accessibility for hearing-impaired users).
- * speakSequence paces item lists (memory words, digits, vigilance letters) at
- * a fixed cadence — a fidelity advantage over variable human examiners — and
- * reports each item's onset time so vigilance can be scored deterministically.
+ * Voice guide: delivers every instruction aloud. Playback chain per utterance:
  *
- * When speechSynthesis is unavailable (or in automated tests) a timer-based
- * fallback keeps the flow fully functional; captions carry the content.
+ *  1. Pre-recorded clip from /audio/manifest.json (natural neural-TTS voice,
+ *     generated offline by ml/generate_audio.py) when one exists;
+ *  2. speechSynthesis fallback, with capitals normalized so engines never
+ *     announce "capital A";
+ *  3. deterministic timer fallback (no audio available / automated tests).
+ *
+ * Nothing spoken is ever rendered on screen — patients must listen, not read
+ * (PI requirement; showing stimuli like the vigilance letters or memory words
+ * would invalidate those items). Each utterance start dispatches a
+ * `moca:speech` CustomEvent for test harnesses.
+ *
+ * speakSequence paces item lists (memory words, digits, vigilance letters) at
+ * a fixed cadence and reports each item's onset time — the timeline used for
+ * deterministic vigilance scoring.
  */
-
-export type CaptionListener = (caption: string | null) => void;
 
 declare global {
   interface Window {
-    /** Test hook: scales all voice-guide durations (e.g. 0.05 in e2e). */
+    /** Test hook: scales all voice-guide durations (e.g. 0.15 in e2e). */
     __ttsTimeScale?: number;
   }
 }
 
+type ClipManifest = Record<string, string>;
+
+/** Manifest keys are normalized utterance text. */
+export function clipKey(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** TTS engines read "A" / "FACE" as "capital ..."; speak lowercase instead. */
+function normalizeForTts(text: string): string {
+  return text.replace(/\b[A-Z]\b/g, (m) => m.toLowerCase()).replace(/\b[A-Z]{2,}\b/g, (m) => m.toLowerCase());
+}
+
 export class VoiceGuide {
-  private listeners = new Set<CaptionListener>();
   private cancelled = false;
-
-  onCaption(fn: CaptionListener): () => void {
-    this.listeners.add(fn);
-    return () => this.listeners.delete(fn);
-  }
-
-  private emit(caption: string | null): void {
-    for (const fn of this.listeners) fn(caption);
-  }
+  private manifest: ClipManifest | null | undefined;
+  private currentAudio: HTMLAudioElement | null = null;
 
   private get timeScale(): number {
     return typeof window !== 'undefined' && window.__ttsTimeScale ? window.__ttsTimeScale : 1;
@@ -42,21 +56,24 @@ export class VoiceGuide {
     } catch {
       /* no speech synthesis */
     }
-    this.emit(null);
+    try {
+      this.currentAudio?.pause();
+    } catch {
+      /* no clip playing */
+    }
+    this.currentAudio = null;
   }
 
   /** Speak a full instruction; resolves when the audio finishes. */
   async speak(text: string): Promise<void> {
     this.cancelled = false;
-    this.emit(text);
     await this.utter(text);
-    this.emit(null);
   }
 
   /**
    * Speak items one per `intervalMs` (protocol: 1 per second for word lists,
    * digits, and vigilance letters). onItemStart receives performance.now() at
-   * each item's onset — the timeline used by the vigilance scorer.
+   * each item's onset. Items are spoken only — never displayed.
    */
   async speakSequence(
     items: string[],
@@ -66,27 +83,75 @@ export class VoiceGuide {
     this.cancelled = false;
     for (const item of items) {
       if (this.cancelled) return;
-      // Clear the caption first so repeated items (e.g. "A", "A") still
-      // produce a visible caption change for each occurrence.
-      this.emit(null);
-      await sleep(10);
       const start = performance.now();
       onItemStart?.(item, start);
-      this.emit(item);
-      // Speak in lowercase: TTS engines announce uppercase letters/words as
-      // "capital A", which is redundant. The caption keeps the original case.
-      await this.utter(item.toLowerCase());
+      await this.utter(item);
       const elapsed = performance.now() - start;
       const remaining = intervalMs * this.timeScale - elapsed;
       if (remaining > 0) await sleep(remaining);
     }
-    this.emit(null);
   }
 
-  private utter(text: string): Promise<void> {
+  private async utter(text: string): Promise<void> {
+    try {
+      window.dispatchEvent(new CustomEvent('moca:speech', { detail: { text } }));
+    } catch {
+      /* non-browser environment */
+    }
+    // Automated tests force the deterministic timer path.
+    if (this.timeScale !== 1) {
+      await sleep(Math.max(60, text.length * 55) * this.timeScale);
+      return;
+    }
+    if (await this.playClip(text)) return;
+    await this.speakWithTts(text);
+  }
+
+  private async loadManifest(): Promise<ClipManifest | null> {
+    if (this.manifest !== undefined) return this.manifest;
+    try {
+      const res = await fetch('/audio/manifest.json');
+      this.manifest = res.ok ? ((await res.json()) as ClipManifest) : null;
+    } catch {
+      this.manifest = null;
+    }
+    return this.manifest;
+  }
+
+  /** Returns true when a pre-recorded clip existed and finished playing. */
+  private async playClip(text: string): Promise<boolean> {
+    const manifest = await this.loadManifest();
+    const file = manifest?.[clipKey(text)];
+    if (!file) return false;
+    return new Promise<boolean>((resolve) => {
+      let done = false;
+      const finish = (ok: boolean) => {
+        if (!done) {
+          done = true;
+          this.currentAudio = null;
+          resolve(ok);
+        }
+      };
+      try {
+        const audio = new Audio(`/audio/${file}`);
+        this.currentAudio = audio;
+        audio.onended = () => finish(true);
+        audio.onerror = () => finish(false);
+        audio.onpause = () => {
+          if (audio.ended === false && this.cancelled) finish(true);
+        };
+        void audio.play().catch(() => finish(false));
+        setTimeout(() => finish(true), 30000); // safety ceiling
+      } catch {
+        finish(false);
+      }
+    });
+  }
+
+  private speakWithTts(text: string): Promise<void> {
     return new Promise((resolve) => {
       const synth = typeof window !== 'undefined' ? window.speechSynthesis : undefined;
-      const fallbackMs = Math.max(400, text.length * 55) * this.timeScale;
+      const fallbackMs = Math.max(400, text.length * 55);
       if (!synth || typeof SpeechSynthesisUtterance === 'undefined') {
         setTimeout(resolve, fallbackMs);
         return;
@@ -99,14 +164,14 @@ export class VoiceGuide {
         }
       };
       try {
-        const u = new SpeechSynthesisUtterance(text);
+        const u = new SpeechSynthesisUtterance(normalizeForTts(text));
         u.rate = 0.9; // slightly slower for older adults
         u.pitch = 1;
         u.onend = finish;
         u.onerror = finish;
         synth.speak(u);
         // Safari sometimes drops onend; hard ceiling keeps the flow alive.
-        setTimeout(finish, Math.max(fallbackMs * 3, 15000 * this.timeScale));
+        setTimeout(finish, Math.max(fallbackMs * 3, 15000));
       } catch {
         setTimeout(finish, fallbackMs);
       }

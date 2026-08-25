@@ -3,7 +3,7 @@ import { StrokePreview } from '../components/StrokePreview';
 import { downloadSession } from '../core/session';
 import type { ItemResult, Session, Stroke } from '../core/types';
 import { REVIEW_CONFIDENCE_THRESHOLD } from '../core/types';
-import type { TrailTap } from '../scoring/trail';
+import type { TrailResponse } from '../items/TrailItem';
 
 const ITEM_LABELS: Record<string, string> = {
   trail: 'Trail making',
@@ -103,6 +103,8 @@ export function ResultsScreen({
         </tbody>
       </table>
 
+      <MemoryIndexNote results={session.results} />
+
       <DrawingReview results={session.results} />
 
       {needsReview.length > 0 && (
@@ -128,6 +130,25 @@ export function ResultsScreen({
   );
 }
 
+/** Cued-recall outcome (unscored): encoding vs retrieval signal for the interpreter. */
+function MemoryIndexNote({ results }: { results: ItemResult[] }): JSX.Element | null {
+  const recall = results.find((r) => r.itemId === 'recall');
+  const d = recall?.detail as
+    | { memoryIndexScore?: number; memoryIndexMax?: number; cueStages?: Record<string, string> }
+    | undefined;
+  if (d?.memoryIndexScore === undefined) return null;
+  const cued = Object.entries(d.cueStages ?? {})
+    .filter(([, s]) => s === 'category' || s === 'multiple_choice')
+    .map(([w, s]) => `${w} (${s === 'category' ? 'category cue' : 'multiple choice'})`);
+  return (
+    <p className="muted" data-testid="memory-index">
+      Memory Index Score: {d.memoryIndexScore} / {d.memoryIndexMax} (free recall ×3, category cue ×2,
+      multiple choice ×1 — cued recall earns no test points)
+      {cued.length > 0 && <> — recovered with cues: {cued.join(', ')}</>}
+    </p>
+  );
+}
+
 /**
  * Qualitative review: each drawn response side by side with its reference so
  * the interpreter can judge the drawings directly rather than relying on the
@@ -137,10 +158,10 @@ function DrawingReview({ results }: { results: ItemResult[] }): JSX.Element | nu
   const trail = results.find((r) => r.itemId === 'trail');
   const cube = results.find((r) => r.itemId === 'cube');
   const clock = results.find((r) => r.itemId === 'clock');
-  const trailTaps = (trail?.response as TrailTap[] | undefined) ?? null;
+  const trailResponse = (trail?.response as TrailResponse | undefined) ?? null;
   const cubeStrokes = (cube?.response as Stroke[] | undefined) ?? null;
   const clockStrokes = (clock?.response as Stroke[] | undefined) ?? null;
-  if (!trailTaps && !cubeStrokes && !clockStrokes) return null;
+  if (!trailResponse && !cubeStrokes && !clockStrokes) return null;
 
   return (
     <div className="col" data-testid="drawing-review">
@@ -149,12 +170,12 @@ function DrawingReview({ results }: { results: ItemResult[] }): JSX.Element | nu
         Reference on the left, the participant's actual response on the right. Automated drawing
         scores are provisional — interpret visually.
       </p>
-      {trailTaps && (
+      {trailResponse && (
         <ReviewPair
           testId="review-trail"
           title={`Trail making — ${trail!.score} / ${trail!.max}`}
           reference={<TrailReference />}
-          actual={<TrailActual taps={trailTaps} />}
+          actual={<TrailActual response={trailResponse} />}
         />
       )}
       {cubeStrokes && (
@@ -163,6 +184,7 @@ function DrawingReview({ results }: { results: ItemResult[] }): JSX.Element | nu
           title={`Cube copy — ${cube!.score} / ${cube!.max}`}
           reference={<CubeModel scale={0.85} />}
           actual={<StrokePreview strokes={cubeStrokes} />}
+          breakdown={cubeBreakdown(cube!)}
         />
       )}
       {clockStrokes && (
@@ -171,10 +193,16 @@ function DrawingReview({ results }: { results: ItemResult[] }): JSX.Element | nu
           title={`Clock drawing ("ten past eleven") — ${clock!.score} / ${clock!.max}`}
           reference={<ClockReference />}
           actual={<StrokePreview strokes={clockStrokes} />}
+          breakdown={clockBreakdown(clock!)}
         />
       )}
     </div>
   );
+}
+
+interface BreakdownEntry {
+  label: string;
+  pass: boolean;
 }
 
 function ReviewPair({
@@ -182,11 +210,13 @@ function ReviewPair({
   title,
   reference,
   actual,
+  breakdown,
 }: {
   testId: string;
   title: string;
   reference: JSX.Element;
   actual: JSX.Element;
+  breakdown?: BreakdownEntry[];
 }): JSX.Element {
   return (
     <div className="review-block" data-testid={testId}>
@@ -201,6 +231,80 @@ function ReviewPair({
           <figcaption>Participant</figcaption>
         </figure>
       </div>
+      {breakdown && (
+        <ul className="breakdown" data-testid={`${testId}-breakdown`}>
+          {breakdown.map((b) => (
+            <li key={b.label} className={b.pass ? 'pass' : 'fail'}>
+              {b.pass ? '✓' : '✗'} {b.label}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
+}
+
+/** The cube scorer's checks, spelled out so the interpreter can audit them. */
+function cubeBreakdown(cube: ItemResult): BreakdownEntry[] {
+  const d = cube.detail as
+    | {
+        checks?: Record<string, boolean>;
+        segments?: number;
+        vertices?: number;
+        meetFraction?: number;
+        hullVertices?: number;
+      }
+    | undefined;
+  if (!d?.checks) return [];
+  const labels: Record<string, string> = {
+    segmentCount: `edges detected: ${d.segments ?? '?'} (8–16 expected)`,
+    linesMeet: `lines meet at corners (${Math.round((d.meetFraction ?? 0) * 100)}% of line ends)`,
+    vertexCount: `corners found: ${d.vertices ?? '?'} (6–10 expected)`,
+    threeDirections: 'three parallel edge directions (3-D form)',
+    similarLengths: 'edges of similar length',
+    hexSilhouette: `hexagonal outline (${d.hullVertices ?? '?'} outline corners)`,
+    interiorJunction: 'interior corner where three edges meet (depth)',
+  };
+  return Object.entries(d.checks).map(([key, pass]) => ({
+    label: labels[key] ?? key,
+    pass,
+  }));
+}
+
+/** The clock scorer's three sub-scores with their measurements. */
+function clockBreakdown(clock: ItemResult): BreakdownEntry[] {
+  const d = clock.detail as
+    | {
+        contour?: { rms?: number; r?: number; score?: number };
+        numbers?: { slotsFilled?: number; identityAgreement?: number | null; score?: number };
+        hands?: { candidates?: { angle: number; len: number }[]; score?: number };
+      }
+    | undefined;
+  if (!d) return [];
+  const out: BreakdownEntry[] = [];
+  if (d.contour) {
+    const pct =
+      d.contour.r && Number.isFinite(d.contour.rms)
+        ? `${Math.round(((d.contour.rms ?? 0) / d.contour.r) * 100)}% fit error`
+        : 'no closed circle found';
+    out.push({ label: `contour: ${pct} (under 15% required)`, pass: d.contour.score === 1 });
+  }
+  if (d.numbers) {
+    const cnn =
+      d.numbers.identityAgreement != null
+        ? `, digit CNN agreement ${Math.round(d.numbers.identityAgreement * 100)}%`
+        : '';
+    out.push({
+      label: `numbers: ${d.numbers.slotsFilled ?? 0}/12 positions filled${cnn}`,
+      pass: d.numbers.score === 1,
+    });
+  }
+  if (d.hands) {
+    const angles = (d.hands.candidates ?? []).map((c) => `${c.angle}°`).join(', ') || 'none found';
+    out.push({
+      label: `hands at ${angles} (targets: minute 60°, hour 335°; minute longer)`,
+      pass: d.hands.score === 1,
+    });
+  }
+  return out;
 }

@@ -46,11 +46,19 @@ export function VigilanceItem({ onComplete }: ItemProps): JSX.Element {
     tapsRef.current.push(now);
   };
 
+  // No on-screen instructions or letter display (PI requirement): the task is
+  // purely auditory — showing the target letter or instructions would let the
+  // patient read instead of listen.
   return (
     <>
-      <p className="instruction">Tap the button every time you hear the letter “A”.</p>
-      <button className="tap-target" data-testid="vigilance-tap" onPointerDown={tap} disabled={!active}>
-        {active ? 'Tap when you hear “A”' : 'Listen…'}
+      <button
+        className="tap-target"
+        aria-label="tap target"
+        data-testid="vigilance-tap"
+        onPointerDown={tap}
+        disabled={!active}
+      >
+        👆
       </button>
     </>
   );

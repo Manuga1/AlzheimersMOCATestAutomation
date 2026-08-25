@@ -26,6 +26,8 @@ export interface CaptureOptions {
   maxMs: number;
   /** Stop early after this much silence once at least one result arrived. */
   silenceStopMs?: number;
+  /** Stop early once the accumulated final transcript satisfies this. */
+  stopWhen?: (text: string) => boolean;
   onInterim?: (text: string) => void;
   /** Signals the UI that listening started (show the mic indicator). */
   onListening?: (listening: boolean) => void;
@@ -133,6 +135,10 @@ export async function captureSpeech(rawOpts: CaptureOptions): Promise<CaptureRes
             if (best && transcripts[transcripts.length - 1] !== best) {
               transcripts.push(best);
               alternatives.push(alts);
+              if (opts.stopWhen?.(transcripts.join(' '))) {
+                // Small delay so a trailing utterance fragment can land.
+                setTimeout(finish, 400);
+              }
             }
             lastResultAt = performance.now();
           } else if (res[0]?.transcript) {

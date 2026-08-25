@@ -277,6 +277,26 @@ describe('cube heuristics', () => {
     const r = scoreCube(wireframeCube());
     expect(r.detail).toBeTruthy();
     expect(r.score).toBe(1);
+    const d = r.detail as { vertices: number; meetFraction: number; checks: Record<string, boolean> };
+    expect(d.vertices).toBeGreaterThanOrEqual(6);
+    expect(d.vertices).toBeLessThanOrEqual(10);
+    expect(d.meetFraction).toBe(1);
+    expect(d.checks.linesMeet).toBe(true);
+    expect(d.checks.vertexCount).toBe(true);
+  });
+  it('rejects a cube whose lines do not meet (exploded edges)', () => {
+    const exploded = wireframeCube().map((s, i) => ({
+      ...s,
+      points: s.points.map((p) => ({
+        ...p,
+        x: p.x + (i % 4) * 24 - 36,
+        y: p.y + Math.floor(i / 4) * 22 - 22,
+      })),
+    }));
+    const r = scoreCube(exploded);
+    const d = r.detail as { checks: Record<string, boolean> };
+    expect(d.checks.linesMeet).toBe(false);
+    expect(r.score).toBe(0);
   });
   it('rejects a flat square', () => {
     const square = [

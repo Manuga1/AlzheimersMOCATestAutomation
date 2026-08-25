@@ -38,6 +38,13 @@ export function scoreCube(strokes: Stroke[]): ScoreResult {
   const checks: Record<string, boolean> = {};
   checks.segmentCount = segs.length >= 8 && segs.length <= 16;
 
+  // Do the lines all meet, and at the right number of corners? Cluster
+  // segment endpoints into junction points: a wireframe cube has ~8 corners
+  // and no dangling line ends.
+  const { vertices, meetFraction } = junctionStats(segs, 0.07 * diag);
+  checks.linesMeet = meetFraction >= 0.85;
+  checks.vertexCount = vertices >= 6 && vertices <= 10;
+
   const clusters = clusterOrientations(segs, 22);
   const top3 = clusters.slice(0, 3);
   const totalLen = segs.reduce((a, s) => a + s.len, 0);
@@ -67,8 +74,46 @@ export function scoreCube(strokes: Stroke[]): ScoreResult {
     max: 1,
     confidence,
     flags,
-    detail: { checks, segments: segs.length, orientationClusters: clusters.length, hullVertices: hullSimple.length },
+    detail: {
+      checks,
+      segments: segs.length,
+      orientationClusters: clusters.length,
+      hullVertices: hullSimple.length,
+      vertices,
+      meetFraction: Math.round(meetFraction * 100) / 100,
+    },
   };
+}
+
+/**
+ * Cluster segment endpoints into junctions. Returns the junction (corner)
+ * count and the fraction of endpoints that meet at least one other segment's
+ * endpoint — dangling ends lower this.
+ */
+function junctionStats(segs: Segment[], eps: number): { vertices: number; meetFraction: number } {
+  const endpoints: Pt[] = segs.flatMap((s) => [
+    { x: s.x1, y: s.y1 },
+    { x: s.x2, y: s.y2 },
+  ]);
+  const n = endpoints.length;
+  if (!n) return { vertices: 0, meetFraction: 0 };
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (Math.hypot(endpoints[i].x - endpoints[j].x, endpoints[i].y - endpoints[j].y) <= eps) {
+        parent[find(i)] = find(j);
+      }
+    }
+  }
+  const sizes = new Map<number, number>();
+  for (let i = 0; i < n; i++) {
+    const r = find(i);
+    sizes.set(r, (sizes.get(r) ?? 0) + 1);
+  }
+  let met = 0;
+  for (const size of sizes.values()) if (size >= 2) met += size;
+  return { vertices: sizes.size, meetFraction: met / n };
 }
 
 function hasInteriorJunction(

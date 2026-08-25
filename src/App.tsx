@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ConfigContext } from './configContext';
 import { voiceGuide } from './core/voiceGuide';
 import { addResult, finalizeSession, newSession, saveSession } from './core/session';
@@ -45,10 +45,7 @@ type Phase = { kind: 'setup' } | { kind: 'onboarding' } | { kind: 'item'; index:
 export default function App(): JSX.Element {
   const [phase, setPhase] = useState<Phase>({ kind: 'setup' });
   const [session, setSession] = useState<Session | null>(null);
-  const [caption, setCaption] = useState<string | null>(null);
   const [itemStartedAt, setItemStartedAt] = useState(0);
-
-  useEffect(() => voiceGuide.onCaption(setCaption), []);
 
   const startSession = (config: SessionConfig, flags: string[]) => {
     const s = { ...newSession(config), flags };
@@ -92,7 +89,7 @@ export default function App(): JSX.Element {
 
   return (
     <div className="app">
-      <CaptionBar caption={caption} phase={phase} />
+      <CaptionBar phase={phase} />
       {phase.kind === 'setup' && <SetupScreen onStart={startSession} />}
       {phase.kind === 'onboarding' && <OnboardingScreen onReady={beginItems} />}
       {phase.kind === 'item' && (
@@ -105,14 +102,12 @@ export default function App(): JSX.Element {
   );
 }
 
-function CaptionBar({ caption, phase }: { caption: string | null; phase: Phase }): JSX.Element {
-  if (caption) {
-    return (
-      <div className="caption-bar" data-testid="caption">
-        🔊 {caption}
-      </div>
-    );
-  }
+/**
+ * Top bar shows only the task name — never a transcript of the audio.
+ * Displaying spoken content would let patients read stimuli (memory words,
+ * vigilance letters) instead of listening, invalidating those items.
+ */
+function CaptionBar({ phase }: { phase: Phase }): JSX.Element {
   const label =
     phase.kind === 'item'
       ? `Task ${phase.index + 1} of ${ITEM_ORDER.length}: ${ITEM_ORDER[phase.index].label}`

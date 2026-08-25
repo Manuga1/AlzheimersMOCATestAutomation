@@ -25,10 +25,7 @@ export function RegistrationItem({ onComplete }: ItemProps): JSX.Element {
           'I am going to read the same list one more time. Try to remember and tell me as many words as you can, including words you said the first time.',
         );
       }
-      await voiceGuide.speakSequence(
-        MEMORY_WORDS.map((w) => w.toUpperCase()),
-        1000,
-      );
+      await voiceGuide.speakSequence([...MEMORY_WORDS], 1000);
       await voiceGuide.speak('Now, tell me as many of those words as you can remember.');
       const res = speechAvailable()
         ? await captureSpeech({ maxMs: 20000, silenceStopMs: 3500, onListening: setListening })

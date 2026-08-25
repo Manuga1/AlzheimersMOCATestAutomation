@@ -1,5 +1,5 @@
-import { STAGE_H, STAGE_W, TRAIL_POSITIONS } from '../items/TrailItem';
-import { TRAIL_SEQUENCE, type TrailTap } from '../scoring/trail';
+import { STAGE_H, STAGE_W, TRAIL_POSITIONS, type TrailResponse } from '../items/TrailItem';
+import { TRAIL_SEQUENCE } from '../scoring/trail';
 
 /** Wireframe cube model, matching the paper stimulus proportions. */
 export function CubeModel({ scale = 1 }: { scale?: number }): JSX.Element {
@@ -78,25 +78,41 @@ const TRAIL_VIEW_H = (TRAIL_VIEW_W * STAGE_H) / STAGE_W;
 function TrailLayout({
   path,
   errorTargets,
+  ink,
 }: {
-  /** Sequence of target labels to connect with lines, in order. */
-  path: string[];
-  /** Targets to mark red (wrong taps). */
+  /** Sequence of target labels to connect with straight lines (reference). */
+  path?: string[];
+  /** Targets to mark red (circles entered out of order). */
   errorTargets?: Set<string>;
+  /** Participant's raw drawn strokes, in stage coordinates. */
+  ink?: TrailResponse['strokes'];
 }): JSX.Element {
+  const sx = TRAIL_VIEW_W / STAGE_W;
+  const sy = TRAIL_VIEW_H / STAGE_H;
   const at = (label: string) => {
     const [x, y] = TRAIL_POSITIONS[label];
     return { x: x * TRAIL_VIEW_W, y: y * TRAIL_VIEW_H };
   };
   return (
     <svg width={TRAIL_VIEW_W} height={TRAIL_VIEW_H}>
-      {path.slice(1).map((label, i) => {
+      {path?.slice(1).map((label, i) => {
         const a = at(path[i]);
         const b = at(label);
         return (
           <line key={`${i}-${label}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#2c5f7c" strokeWidth={2} />
         );
       })}
+      {ink?.map((s, i) => (
+        <polyline
+          key={`ink-${i}`}
+          points={s.points.map((p) => `${p.x * sx},${p.y * sy}`).join(' ')}
+          fill="none"
+          stroke="#2c5f7c"
+          strokeWidth={1.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ))}
       {Object.keys(TRAIL_POSITIONS).map((label) => {
         const p = at(label);
         const isError = errorTargets?.has(label);
@@ -109,6 +125,7 @@ function TrailLayout({
               fill={isError ? '#b3402a' : '#fff'}
               stroke={isError ? '#b3402a' : '#23303a'}
               strokeWidth={2}
+              fillOpacity={ink ? 0.75 : 1}
             />
             <text x={p.x} y={p.y + 5} textAnchor="middle" fontSize={13} fill={isError ? '#fff' : '#23303a'}>
               {label}
@@ -125,18 +142,16 @@ export function TrailReference(): JSX.Element {
   return <TrailLayout path={[...TRAIL_SEQUENCE]} />;
 }
 
-/** The participant's actual tap sequence; wrong taps are marked red. */
-export function TrailActual({ taps }: { taps: TrailTap[] }): JSX.Element {
+/** The participant's actual drawn line; circles entered out of order are red. */
+export function TrailActual({ response }: { response: TrailResponse }): JSX.Element {
   const errorTargets = new Set<string>();
   let expected = 0;
-  const path: string[] = [];
-  for (const tap of taps) {
+  for (const tap of response.taps) {
     if (tap.target === TRAIL_SEQUENCE[expected]) {
-      path.push(tap.target);
       expected++;
     } else if (TRAIL_SEQUENCE.indexOf(tap.target as (typeof TRAIL_SEQUENCE)[number]) >= expected) {
       errorTargets.add(tap.target);
     }
   }
-  return <TrailLayout path={path} errorTargets={errorTargets} />;
+  return <TrailLayout ink={response.strokes} errorTargets={errorTargets} />;
 }

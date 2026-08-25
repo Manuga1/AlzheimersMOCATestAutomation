@@ -1,101 +1,276 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ItemProps } from '../App';
 import { voiceGuide } from '../core/voiceGuide';
+import type { Stroke, StrokePoint } from '../core/types';
 import { scoreTrail, TRAIL_SEQUENCE, type TrailTap } from '../scoring/trail';
 import { useRunOnce } from './common';
 
 export const STAGE_W = 860;
 export const STAGE_H = 460;
+const NODE_R = 36;
 
-/** Approximate spatial scatter of the paper form's circles (relative coords). */
+/**
+ * Circle layout reproducing the official MoCA trail figure's arrangement:
+ * Begin at 1 (lower left), End at E (upper right), with a non-crossing
+ * solution path. Coordinates are relative (x, y as fractions of the stage).
+ */
 export const TRAIL_POSITIONS: Record<string, [number, number]> = {
-  '1': [0.12, 0.72],
-  A: [0.09, 0.3],
-  '2': [0.3, 0.12],
-  B: [0.46, 0.44],
-  '3': [0.64, 0.13],
-  C: [0.9, 0.26],
-  '4': [0.88, 0.66],
-  D: [0.64, 0.84],
-  '5': [0.42, 0.76],
-  E: [0.26, 0.5],
+  '1': [0.1, 0.8],
+  A: [0.07, 0.42],
+  '2': [0.3, 0.62],
+  B: [0.32, 0.18],
+  '3': [0.55, 0.45],
+  C: [0.62, 0.82],
+  '4': [0.72, 0.6],
+  D: [0.85, 0.78],
+  '5': [0.62, 0.15],
+  E: [0.9, 0.2],
 };
+
+/** Segments shown as dotted example guides the patient traces over. */
+const GUIDED_SEGMENTS: [string, string][] = [
+  ['1', 'A'],
+  ['A', '2'],
+];
 
 const TIME_LIMIT_MS = 90000;
 
+export interface TrailResponse {
+  taps: TrailTap[];
+  strokes: Stroke[];
+}
+
+const px = (label: string): { x: number; y: number } => ({
+  x: TRAIL_POSITIONS[label][0] * STAGE_W,
+  y: TRAIL_POSITIONS[label][1] * STAGE_H,
+});
+
+/**
+ * Trail making, official-style: the patient DRAWS a continuous line with the
+ * stylus from circle to circle (1→A→2→B→…→E). Dotted guide lines over the
+ * first two segments show what to do; the patient traces them and continues
+ * unguided. Entering the correct next circle advances; entering a wrong
+ * circle records an error (self-correction rule handled by scoreTrail).
+ */
 export function TrailItem({ onComplete }: ItemProps): JSX.Element {
   const [progress, setProgress] = useState(0);
   const [errorNode, setErrorNode] = useState<string | null>(null);
+  const [, setInkVersion] = useState(0);
+
   const tapsRef = useRef<TrailTap[]>([]);
+  const strokesRef = useRef<Stroke[]>([]);
+  const activeStroke = useRef<Stroke | null>(null);
+  const progressRef = useRef(0);
+  const insideRef = useRef<string | null>(null);
   const doneRef = useRef(false);
   const timerRef = useRef<number | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  const finish = (timedOut: boolean) => {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    if (timerRef.current) clearTimeout(timerRef.current);
+    // Include the in-flight stroke: the pattern completes while the pen is
+    // still down on the final circle.
+    const strokes = activeStroke.current
+      ? [...strokesRef.current, activeStroke.current]
+      : strokesRef.current;
+    const response: TrailResponse = { taps: tapsRef.current, strokes };
+    const result = scoreTrail(tapsRef.current, timedOut);
+    onComplete({
+      ...result,
+      detail: { ...result.detail, guidedSegments: GUIDED_SEGMENTS.map((s) => s.join('-')) },
+      response,
+    });
+  };
 
   useRunOnce(async () => {
     await voiceGuide.speak(
-      'Please touch the circles in order, switching between numbers and letters. Start at one, then A, then two, then B, and keep going until you reach E.',
+      'Please draw a line going from a number to a letter, in increasing order, using the pen. Begin at the circle marked one, and trace over the dotted line to A, and then to two. Then continue on your own: draw from two to B, and keep switching between numbers and letters until you reach the circle marked E.',
     );
-    timerRef.current = window.setTimeout(() => {
-      if (!doneRef.current) {
-        doneRef.current = true;
-        onComplete({ ...scoreTrail(tapsRef.current, true), response: tapsRef.current });
-      }
-    }, TIME_LIMIT_MS * (window.__ttsTimeScale ?? 1));
+    timerRef.current = window.setTimeout(
+      () => finish(true),
+      TIME_LIMIT_MS * (window.__ttsTimeScale ?? 1),
+    );
   });
 
-  const tap = (target: string) => {
+  const hitNode = (x: number, y: number): string | null => {
+    for (const label of Object.keys(TRAIL_POSITIONS)) {
+      const p = px(label);
+      if (Math.hypot(x - p.x, y - p.y) <= NODE_R + 6) return label;
+    }
+    return null;
+  };
+
+  const handlePoint = (x: number, y: number, t: number) => {
     if (doneRef.current) return;
-    tapsRef.current.push({ target, t: performance.now() });
-    if (target === TRAIL_SEQUENCE[progress]) {
-      const next = progress + 1;
-      setProgress(next);
+    const node = hitNode(x, y);
+    if (node === insideRef.current) return;
+    insideRef.current = node;
+    if (!node) return;
+    const expected = TRAIL_SEQUENCE[progressRef.current];
+    const idx = TRAIL_SEQUENCE.indexOf(node as (typeof TRAIL_SEQUENCE)[number]);
+    if (node === expected) {
+      tapsRef.current.push({ target: node, t });
+      progressRef.current++;
+      setProgress(progressRef.current);
       setErrorNode(null);
-      if (next === TRAIL_SEQUENCE.length) {
-        doneRef.current = true;
-        if (timerRef.current) clearTimeout(timerRef.current);
-        onComplete({ ...scoreTrail(tapsRef.current), response: tapsRef.current });
+      if (progressRef.current === TRAIL_SEQUENCE.length) {
+        // Let the pen-up handler store the final stroke before finishing.
+        setTimeout(() => finish(false), 50);
       }
-    } else if (TRAIL_SEQUENCE.indexOf(target as (typeof TRAIL_SEQUENCE)[number]) >= progress) {
-      // Wrong tap flashes briefly; already-completed circles are inert.
-      setErrorNode(target);
+    } else if (idx >= progressRef.current) {
+      // Entering a future circle out of order is an error; circles already
+      // completed are inert (the line legitimately passes back near them).
+      tapsRef.current.push({ target: node, t });
+      setErrorNode(node);
       setTimeout(() => setErrorNode(null), 600);
     }
   };
 
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+
+    const toLocal = (ev: PointerEvent): StrokePoint => {
+      const rect = svg.getBoundingClientRect();
+      return {
+        x: ((ev.clientX - rect.left) / rect.width) * STAGE_W,
+        y: ((ev.clientY - rect.top) / rect.height) * STAGE_H,
+        t: performance.now(),
+        pressure: ev.pressure,
+      };
+    };
+
+    const down = (ev: PointerEvent) => {
+      if (ev.pointerType === 'touch' || doneRef.current) return;
+      ev.preventDefault();
+      svg.setPointerCapture(ev.pointerId);
+      const p = toLocal(ev);
+      activeStroke.current = { points: [p], pointerType: ev.pointerType };
+      insideRef.current = null;
+      handlePoint(p.x, p.y, p.t);
+    };
+    const move = (ev: PointerEvent) => {
+      if (!activeStroke.current || ev.pointerType === 'touch') return;
+      ev.preventDefault();
+      const events = typeof ev.getCoalescedEvents === 'function' ? ev.getCoalescedEvents() : [ev];
+      for (const e of events.length ? events : [ev]) {
+        const p = toLocal(e as PointerEvent);
+        activeStroke.current.points.push(p);
+        handlePoint(p.x, p.y, p.t);
+      }
+      setInkVersion((v) => v + 1);
+    };
+    const up = (ev: PointerEvent) => {
+      if (!activeStroke.current || ev.pointerType === 'touch') return;
+      if (activeStroke.current.points.length > 1) {
+        strokesRef.current = [...strokesRef.current, activeStroke.current];
+      }
+      activeStroke.current = null;
+      insideRef.current = null;
+      setInkVersion((v) => v + 1);
+    };
+
+    svg.addEventListener('pointerdown', down);
+    svg.addEventListener('pointermove', move);
+    svg.addEventListener('pointerup', up);
+    svg.addEventListener('pointercancel', up);
+    return () => {
+      svg.removeEventListener('pointerdown', down);
+      svg.removeEventListener('pointermove', move);
+      svg.removeEventListener('pointerup', up);
+      svg.removeEventListener('pointercancel', up);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const doneSet = new Set(TRAIL_SEQUENCE.slice(0, progress));
+  const inkStrokes = activeStroke.current
+    ? [...strokesRef.current, activeStroke.current]
+    : strokesRef.current;
 
   return (
     <>
-      <p className="instruction">Touch the circles in order: 1 → A → 2 → B → … → 5 → E</p>
-      <div className="trail-stage" style={{ width: STAGE_W, height: STAGE_H }}>
-        <svg width={STAGE_W} height={STAGE_H} style={{ position: 'absolute', pointerEvents: 'none' }}>
-          {TRAIL_SEQUENCE.slice(1, progress).map((label, i) => {
-            const [x1, y1] = TRAIL_POSITIONS[TRAIL_SEQUENCE[i]];
-            const [x2, y2] = TRAIL_POSITIONS[label];
-            return (
-              <line
-                key={label}
-                x1={x1 * STAGE_W}
-                y1={y1 * STAGE_H}
-                x2={x2 * STAGE_W}
-                y2={y2 * STAGE_H}
-                stroke="#2c5f7c"
+      <p className="instruction">
+        Draw a line from circle to circle in order: 1 → A → 2 → B → … → 5 → E
+      </p>
+      <svg
+        ref={svgRef}
+        className="trail-stage"
+        width={STAGE_W}
+        height={STAGE_H}
+        viewBox={`0 0 ${STAGE_W} ${STAGE_H}`}
+        style={{ touchAction: 'none' }}
+        data-testid="trail-svg"
+      >
+        {/* Dotted example guides over the first two segments */}
+        {GUIDED_SEGMENTS.map(([a, b]) => {
+          const pa = px(a);
+          const pb = px(b);
+          return (
+            <line
+              key={`${a}${b}`}
+              x1={pa.x}
+              y1={pa.y}
+              x2={pb.x}
+              y2={pb.y}
+              stroke="#9aa7b0"
+              strokeWidth={3}
+              strokeDasharray="4 10"
+              data-testid={`trail-guide-${a}-${b}`}
+            />
+          );
+        })}
+        {/* Participant ink */}
+        {inkStrokes.map((s, i) => (
+          <polyline
+            key={i}
+            points={s.points.map((p) => `${p.x},${p.y}`).join(' ')}
+            fill="none"
+            stroke="#2c5f7c"
+            strokeWidth={4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        ))}
+        {/* Circles */}
+        {Object.keys(TRAIL_POSITIONS).map((label) => {
+          const p = px(label);
+          const done = doneSet.has(label as never);
+          const isError = errorNode === label;
+          return (
+            <g key={label} data-testid={`trail-${label}`}>
+              <circle
+                cx={p.x}
+                cy={p.y}
+                r={NODE_R}
+                fill={isError ? '#b3402a' : done ? '#2c5f7c' : '#fff'}
+                stroke={isError ? '#b3402a' : done ? '#2c5f7c' : '#23303a'}
                 strokeWidth={3}
               />
-            );
-          })}
-        </svg>
-        {Object.entries(TRAIL_POSITIONS).map(([label, [x, y]]) => (
-          <button
-            key={label}
-            className={`trail-node ${doneSet.has(label as never) ? 'done' : ''} ${errorNode === label ? 'error' : ''}`}
-            style={{ left: x * STAGE_W, top: y * STAGE_H }}
-            data-testid={`trail-${label}`}
-            onClick={() => tap(label)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+              <text
+                x={p.x}
+                y={p.y + 10}
+                textAnchor="middle"
+                fontSize={30}
+                fontWeight={700}
+                fill={done || isError ? '#fff' : '#23303a'}
+                style={{ pointerEvents: 'none', userSelect: 'none' }}
+              >
+                {label}
+              </text>
+            </g>
+          );
+        })}
+        {/* Begin / End labels, as on the paper form */}
+        <text x={px('1').x} y={px('1').y + NODE_R + 24} textAnchor="middle" fontSize={16} fill="#6b7680">
+          Begin
+        </text>
+        <text x={px('E').x} y={px('E').y - NODE_R - 10} textAnchor="middle" fontSize={16} fill="#6b7680">
+          End
+        </text>
+      </svg>
     </>
   );
 }

@@ -1,9 +1,8 @@
 import { useRef, useState } from 'react';
 import type { ItemProps } from '../App';
+import { ANIMAL_DRAWINGS } from '../components/animals';
 import { NAMING_ANIMALS, scoreNaming } from '../scoring/naming';
 import { askSpoken, ListeningIndicator, TypedInput, useRunOnce } from './common';
-
-const GLYPHS: Record<string, string> = { lion: '🦁', rhinoceros: '🦏', camel: '🐫' };
 
 export function NamingItem({ onComplete }: ItemProps): JSX.Element {
   const [index, setIndex] = useState(0);
@@ -37,11 +36,12 @@ export function NamingItem({ onComplete }: ItemProps): JSX.Element {
     onComplete({ ...scoreNaming(answers), response: answers });
   });
 
+  const Drawing = ANIMAL_DRAWINGS[NAMING_ANIMALS[index].id];
   return (
     <>
       <p className="instruction">What is the name of this animal?</p>
       <div className="animal-glyph" data-testid={`animal-${NAMING_ANIMALS[index].id}`}>
-        {GLYPHS[NAMING_ANIMALS[index].id]}
+        <Drawing />
       </div>
       <ListeningIndicator on={listening} />
       {needTyped && (
