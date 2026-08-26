@@ -17,19 +17,25 @@ export function DigitSpanItem({ onComplete }: ItemProps): JSX.Element {
       setNeedKeypad(true);
     });
 
-  const collect = async (digits: number[], intro: string): Promise<string> => {
-    await voiceGuide.speak(intro);
+  const collect = async (
+    digits: number[],
+    intro: string,
+    alive: () => boolean,
+  ): Promise<string> => {
+    await voiceGuide.speak(intro, alive);
     // Digits are read at exactly one per second; never re-read (protocol).
-    await voiceGuide.speakSequence(digits.map(String), 1000);
+    await voiceGuide.speakSequence(digits.map(String), 1000, undefined, alive);
+    if (!alive()) return '';
     if (speechAvailable()) {
-      let res = await captureSpeech({ maxMs: 15000, silenceStopMs: 3000, onListening: setListening });
-      if (!res.text) {
-        await voiceGuide.speak('Please say the numbers now.');
-        res = await captureSpeech({ maxMs: 15000, silenceStopMs: 3000, onListening: setListening });
+      let res = await captureSpeech({ maxMs: 15000, silenceStopMs: 3000, alive, onListening: setListening });
+      if (!res.text && alive()) {
+        await voiceGuide.speak('Please say the numbers now.', alive);
+        res = await captureSpeech({ maxMs: 15000, silenceStopMs: 3000, alive, onListening: setListening });
       }
       if (res.text) return res.text;
     }
-    await voiceGuide.speak('Please enter the numbers using the keypad, then tap OK.');
+    if (!alive()) return '';
+    await voiceGuide.speak('Please enter the numbers using the keypad, then tap OK.', alive);
     usedKeypad.current = true;
     const typed = await awaitKeypad();
     setNeedKeypad(false);
@@ -40,11 +46,13 @@ export function DigitSpanItem({ onComplete }: ItemProps): JSX.Element {
     const fwd = await collect(
       DIGITS_FORWARD,
       'I am going to say some numbers. When I am done, repeat them to me exactly as I said them.',
+      alive,
     );
     if (!alive()) return;
     const bwd = await collect(
       DIGITS_BACKWARD,
       'Now I am going to say some more numbers. But this time, when I am done, repeat them to me in the backward order.',
+      alive,
     );
     if (!alive()) return;
     onComplete({

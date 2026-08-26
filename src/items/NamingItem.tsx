@@ -24,6 +24,7 @@ export function NamingItem({ onComplete }: ItemProps): JSX.Element {
       setNeedTyped(false);
       const res = await askSpoken('Tell me the name of this animal.', {
         reprompt: 'Please say the name of the animal now.',
+        alive,
         onListening: setListening,
       });
       if (!alive()) return;

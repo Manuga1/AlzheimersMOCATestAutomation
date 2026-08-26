@@ -28,6 +28,12 @@ export interface CaptureOptions {
   silenceStopMs?: number;
   /** Stop early once the accumulated final transcript satisfies this. */
   stopWhen?: (text: string) => boolean;
+  /**
+   * Owning flow's liveness. A capture requested by a stale flow (skipped
+   * item) returns empty immediately; a running capture finishes as soon as
+   * its flow dies, releasing the microphone for the next item.
+   */
+  alive?: () => boolean;
   onInterim?: (text: string) => void;
   /** Signals the UI that listening started (show the mic indicator). */
   onListening?: (listening: boolean) => void;
@@ -75,7 +81,7 @@ export function abortActiveCaptures(): void {
 
 export async function captureSpeech(rawOpts: CaptureOptions): Promise<CaptureResult> {
   const Ctor = getRecognitionCtor();
-  if (!Ctor) {
+  if (!Ctor || (rawOpts.alive && !rawOpts.alive())) {
     return { transcripts: [], alternatives: [], text: '', voiceActivityMs: null };
   }
   const scale = window.__speechTimeScale ?? 1;
@@ -170,6 +176,10 @@ export async function captureSpeech(rawOpts: CaptureOptions): Promise<CaptureRes
 
     const hardStop = setTimeout(finish, opts.maxMs);
     const silencePoll = setInterval(() => {
+      if (opts.alive && !opts.alive()) {
+        finish();
+        return;
+      }
       if (
         opts.silenceStopMs &&
         transcripts.length > 0 &&

@@ -23,16 +23,17 @@ export function SentenceItem({ onComplete }: ItemProps): JSX.Element {
         i === 0
           ? 'I am going to read you a sentence. Repeat it after me, exactly as I say it.'
           : 'Now I am going to read you another sentence. Repeat it after me, exactly as I say it.',
+        alive,
       );
-      await voiceGuide.speak(SENTENCES[i]);
+      await voiceGuide.speak(SENTENCES[i], alive);
       if (!speechAvailable()) {
         responses.push({ alternatives: [] });
         continue;
       }
-      let res = await captureSpeech({ maxMs: 20000, silenceStopMs: 3000, onListening: setListening });
-      if (!res.text) {
-        await voiceGuide.speak('Please repeat the sentence now.');
-        res = await captureSpeech({ maxMs: 15000, silenceStopMs: 3000, onListening: setListening });
+      let res = await captureSpeech({ maxMs: 20000, silenceStopMs: 3000, alive, onListening: setListening });
+      if (!res.text && alive()) {
+        await voiceGuide.speak('Please repeat the sentence now.', alive);
+        res = await captureSpeech({ maxMs: 15000, silenceStopMs: 3000, alive, onListening: setListening });
       }
       responses.push({ alternatives: res.alternatives.flat().length ? res.alternatives.flat() : [res.text] });
     }

@@ -64,8 +64,14 @@ export class VoiceGuide {
     this.currentAudio = null;
   }
 
-  /** Speak a full instruction; resolves when the audio finishes. */
-  async speak(text: string): Promise<void> {
+  /**
+   * Speak a full instruction; resolves when the audio finishes. Pass the
+   * owning flow's `alive` getter so a call from a stale flow (skipped item,
+   * restarted session) becomes a silent no-op instead of talking over the
+   * next item.
+   */
+  async speak(text: string, alive?: () => boolean): Promise<void> {
+    if (alive && !alive()) return;
     this.cancelled = false;
     await this.utter(text);
   }
@@ -79,10 +85,11 @@ export class VoiceGuide {
     items: string[],
     intervalMs: number,
     onItemStart?: (item: string, t: number) => void,
+    alive?: () => boolean,
   ): Promise<void> {
     this.cancelled = false;
     for (const item of items) {
-      if (this.cancelled) return;
+      if (this.cancelled || (alive && !alive())) return;
       const start = performance.now();
       onItemStart?.(item, start);
       await this.utter(item);

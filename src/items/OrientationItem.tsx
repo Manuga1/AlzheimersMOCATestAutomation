@@ -38,6 +38,7 @@ export function OrientationItem({ onComplete }: ItemProps): JSX.Element {
       if (!alive()) return;
       const res = await askSpoken(q.prompt, {
         reprompt: 'Please say your answer now.',
+        alive,
         onListening: setListening,
       });
       if (res.text) {

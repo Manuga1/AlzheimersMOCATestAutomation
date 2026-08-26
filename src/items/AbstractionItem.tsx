@@ -23,9 +23,10 @@ export function AbstractionItem({ onComplete }: ItemProps): JSX.Element {
       setNeedTyped(true);
     });
 
-  const askPair = async (question: string): Promise<string> => {
+  const askPair = async (question: string, alive: () => boolean): Promise<string> => {
     const res = await askSpoken(question, {
       reprompt: 'Please say your answer now.',
+      alive,
       onListening: setListening,
     });
     if (res.text) return res.text;
@@ -42,14 +43,15 @@ export function AbstractionItem({ onComplete }: ItemProps): JSX.Element {
     // Practice pair (unscored) with the one corrective prompt from the protocol.
     const practice = await askPair(
       'Tell me how an orange and a banana are alike. What do they have in common?',
+      alive,
     );
     if (!alive()) return;
     if (!transcriptContains(practice, ['fruit', 'fruits'], 0.2)) {
-      await voiceGuide.speak('Yes, and they are also both fruit.');
+      await voiceGuide.speak('Yes, and they are also both fruit.', alive);
     }
-    const a1 = await askPair('Now, tell me how a train and a bicycle are alike.');
+    const a1 = await askPair('Now, tell me how a train and a bicycle are alike.', alive);
     if (!alive()) return;
-    const a2 = await askPair('Now, tell me how a watch and a ruler are alike.');
+    const a2 = await askPair('Now, tell me how a watch and a ruler are alike.', alive);
     if (!alive()) return;
     const answers = [
       { pairId: ABSTRACTION_PAIRS[0].id, transcript: a1 },

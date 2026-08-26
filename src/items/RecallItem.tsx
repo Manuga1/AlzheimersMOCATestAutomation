@@ -34,6 +34,7 @@ export function RecallItem({ onComplete }: ItemProps): JSX.Element {
   useRunOnce(async (alive) => {
     await voiceGuide.speak(
       'Earlier in the test, I read you a list of five words and asked you to remember them. Tell me as many of those words as you can remember now.',
+      alive,
     );
     if (!alive()) return;
     if (!speechAvailable()) {
@@ -46,10 +47,10 @@ export function RecallItem({ onComplete }: ItemProps): JSX.Element {
       });
       return;
     }
-    let res = await captureSpeech({ maxMs: 30000, silenceStopMs: 4000, onListening: setListening });
-    if (!res.text) {
-      await voiceGuide.speak('Take your time. Say any of the words you remember now.');
-      res = await captureSpeech({ maxMs: 20000, silenceStopMs: 4000, onListening: setListening });
+    let res = await captureSpeech({ maxMs: 30000, silenceStopMs: 4000, alive, onListening: setListening });
+    if (!res.text && alive()) {
+      await voiceGuide.speak('Take your time. Say any of the words you remember now.', alive);
+      res = await captureSpeech({ maxMs: 20000, silenceStopMs: 4000, alive, onListening: setListening });
     }
     const outcome = matchRecalledWords(res.text);
     const freeRecalled = new Set(outcome.recalled);
@@ -64,15 +65,19 @@ export function RecallItem({ onComplete }: ItemProps): JSX.Element {
         continue;
       }
       const cue = RECALL_CUES[word];
-      await voiceGuide.speak(`I will give you a hint. One of the words was ${cue.category}. What was the word?`);
-      const catRes = await captureSpeech({ maxMs: 12000, silenceStopMs: 3000, onListening: setListening });
+      await voiceGuide.speak(
+        `I will give you a hint. One of the words was ${cue.category}. What was the word?`,
+        alive,
+      );
+      const catRes = await captureSpeech({ maxMs: 12000, silenceStopMs: 3000, alive, onListening: setListening });
       cueTranscripts[word] = [catRes.text];
       if (transcriptContains(catRes.text, [word], 0.2)) {
         stages[word] = 'category';
         continue;
       }
-      await voiceGuide.speak(`Was it ${cue.choices[0]}, ${cue.choices[1]}, or ${cue.choices[2]}?`);
-      const mcRes = await captureSpeech({ maxMs: 12000, silenceStopMs: 3000, onListening: setListening });
+      if (!alive()) return;
+      await voiceGuide.speak(`Was it ${cue.choices[0]}, ${cue.choices[1]}, or ${cue.choices[2]}?`, alive);
+      const mcRes = await captureSpeech({ maxMs: 12000, silenceStopMs: 3000, alive, onListening: setListening });
       cueTranscripts[word].push(mcRes.text);
       stages[word] = transcriptContains(mcRes.text, [word], 0.2) ? 'multiple_choice' : 'not_recalled';
     }

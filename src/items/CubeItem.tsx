@@ -10,9 +10,10 @@ export function CubeItem({ onComplete }: ItemProps): JSX.Element {
   const canvasRef = useRef<DrawingCanvasHandle>(null);
   const [strokeCount, setStrokeCount] = useState(0);
 
-  useRunOnce(async () => {
+  useRunOnce(async (alive) => {
     await voiceGuide.speak(
       'Copy this drawing as accurately as you can in the space on the right. Tap Done when you are finished.',
+      alive,
     );
   });
 

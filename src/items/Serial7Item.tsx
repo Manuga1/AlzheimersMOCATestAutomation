@@ -19,6 +19,7 @@ export function Serial7Item({ onComplete }: ItemProps): JSX.Element {
   useRunOnce(async (alive) => {
     await voiceGuide.speak(
       'Now, I will ask you to count by subtracting seven from one hundred, and then, keep subtracting seven from your answer until I tell you to stop. Say each number out loud. Begin now: what is one hundred minus seven?',
+      alive,
     );
     if (!alive()) return;
     if (!speechAvailable()) {
@@ -35,11 +36,12 @@ export function Serial7Item({ onComplete }: ItemProps): JSX.Element {
       maxMs: 90000,
       silenceStopMs: 12000,
       stopWhen: (text) => extractNumbers(text).length >= 5,
+      alive,
       onListening: setListening,
     });
     if (!alive()) return;
     const numbers = extractNumbers(res.text).slice(0, 5);
-    await voiceGuide.speak('Stop. Well done.');
+    await voiceGuide.speak('Stop. Well done.', alive);
     const responses: (number | null)[] = Array.from({ length: 5 }, (_, i) => numbers[i] ?? null);
     onComplete({ ...scoreSerial7(responses, false), response: { transcript: res.text, numbers } });
   });

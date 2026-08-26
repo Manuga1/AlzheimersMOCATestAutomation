@@ -29,6 +29,8 @@ export interface AskOptions {
   silenceStopMs?: number;
   /** Spoken once if the first capture hears nothing. */
   reprompt?: string;
+  /** Owning flow's liveness — a dead flow's asks become silent no-ops. */
+  alive?: () => boolean;
   onListening?: (on: boolean) => void;
 }
 
@@ -38,15 +40,14 @@ export interface AskOptions {
  * re-reading of stimulus material).
  */
 export async function askSpoken(prompt: string, opts: AskOptions = {}): Promise<CaptureResult> {
-  const { maxMs = 12000, silenceStopMs = 2500, reprompt, onListening } = opts;
-  await voiceGuide.speak(prompt);
-  if (!speechAvailable()) {
-    return { transcripts: [], alternatives: [], text: '', voiceActivityMs: null };
-  }
-  let result = await captureSpeech({ maxMs, silenceStopMs, onListening });
-  if (!result.text && reprompt) {
-    await voiceGuide.speak(reprompt);
-    result = await captureSpeech({ maxMs, silenceStopMs, onListening });
+  const { maxMs = 12000, silenceStopMs = 2500, reprompt, alive, onListening } = opts;
+  const empty: CaptureResult = { transcripts: [], alternatives: [], text: '', voiceActivityMs: null };
+  await voiceGuide.speak(prompt, alive);
+  if (!speechAvailable() || (alive && !alive())) return empty;
+  let result = await captureSpeech({ maxMs, silenceStopMs, alive, onListening });
+  if (!result.text && reprompt && (!alive || alive())) {
+    await voiceGuide.speak(reprompt, alive);
+    result = await captureSpeech({ maxMs, silenceStopMs, alive, onListening });
   }
   return result;
 }

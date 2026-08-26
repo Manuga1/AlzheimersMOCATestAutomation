@@ -18,23 +18,25 @@ export function RegistrationItem({ onComplete }: ItemProps): JSX.Element {
     const trials: { transcript: string; recalled: string[] }[] = [];
     await voiceGuide.speak(
       'This is a memory test. I am going to read you a list of five words that you will have to remember now, and later on. Listen carefully.',
+      alive,
     );
     for (let trial = 0; trial < 2; trial++) {
       if (!alive()) return;
       if (trial === 1) {
         await voiceGuide.speak(
           'I am going to read the same list one more time. Try to remember and tell me as many words as you can, including words you said the first time.',
+          alive,
         );
       }
-      await voiceGuide.speakSequence([...MEMORY_WORDS], 1000);
-      await voiceGuide.speak('Now, tell me as many of those words as you can remember.');
+      await voiceGuide.speakSequence([...MEMORY_WORDS], 1000, undefined, alive);
+      await voiceGuide.speak('Now, tell me as many of those words as you can remember.', alive);
       const res = speechAvailable()
-        ? await captureSpeech({ maxMs: 20000, silenceStopMs: 3500, onListening: setListening })
+        ? await captureSpeech({ maxMs: 20000, silenceStopMs: 3500, alive, onListening: setListening })
         : { text: '', transcripts: [], alternatives: [], voiceActivityMs: null };
       trials.push({ transcript: res.text, recalled: matchRecalledWords(res.text).recalled });
     }
     if (!alive()) return;
-    await voiceGuide.speak('I will ask you to recall those words again at the end of the test.');
+    await voiceGuide.speak('I will ask you to recall those words again at the end of the test.', alive);
     onComplete({
       score: 0,
       max: 0,

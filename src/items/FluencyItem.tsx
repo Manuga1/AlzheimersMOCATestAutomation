@@ -19,6 +19,7 @@ export function FluencyItem({ onComplete }: ItemProps): JSX.Element {
   useRunOnce(async (alive) => {
     await voiceGuide.speak(
       'Tell me as many words as you can think of that begin with the letter F. Proper nouns like names of people or places do not count, and numbers do not count. You will have one minute. Ready? Begin.',
+      alive,
     );
     if (!alive()) return;
     if (!speechAvailable()) {
@@ -34,11 +35,12 @@ export function FluencyItem({ onComplete }: ItemProps): JSX.Element {
     setRunning(true);
     const res = await captureSpeech({
       maxMs: WINDOW_MS * (window.__ttsTimeScale ?? 1),
+      alive,
       onListening: setListening,
     });
     setRunning(false);
     if (!alive()) return;
-    await voiceGuide.speak('Time is up. Well done.');
+    await voiceGuide.speak('Time is up. Well done.', alive);
     onComplete({
       ...scoreFluency(res.transcripts.length ? res.transcripts : [res.text], res.voiceActivityMs),
       response: res.transcripts,

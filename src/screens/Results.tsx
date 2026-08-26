@@ -41,7 +41,7 @@ export function ResultsScreen({
     (orientation?.flags.includes('city_unverified') ? 1 : 0);
 
   return (
-    <div className="screen" data-testid="results">
+    <div className="screen top-align" data-testid="results">
       <h1>Session complete</h1>
 
       <div className="score-card" data-testid="score-card">

@@ -53,8 +53,6 @@ const px = (label: string): { x: number; y: number } => ({
  * circle records an error (self-correction rule handled by scoreTrail).
  */
 export function TrailItem({ onComplete }: ItemProps): JSX.Element {
-  const [progress, setProgress] = useState(0);
-  const [errorNode, setErrorNode] = useState<string | null>(null);
   const [, setInkVersion] = useState(0);
 
   const tapsRef = useRef<TrailTap[]>([]);
@@ -84,9 +82,10 @@ export function TrailItem({ onComplete }: ItemProps): JSX.Element {
     });
   };
 
-  useRunOnce(async () => {
+  useRunOnce(async (alive) => {
     await voiceGuide.speak(
       'Please draw a line going from a number to a letter, in increasing order, using the pen. Begin at the circle marked one, and trace over the dotted line to A, and then to two. Then continue on your own: draw from two to B, and keep switching between numbers and letters until you reach the circle marked E.',
+      alive,
     );
     timerRef.current = window.setTimeout(
       () => finish(true),
@@ -110,11 +109,11 @@ export function TrailItem({ onComplete }: ItemProps): JSX.Element {
     if (!node) return;
     const expected = TRAIL_SEQUENCE[progressRef.current];
     const idx = TRAIL_SEQUENCE.indexOf(node as (typeof TRAIL_SEQUENCE)[number]);
+    // No right/wrong feedback is shown (per protocol — the examiner does not
+    // correct the patient); progress and errors are recorded silently.
     if (node === expected) {
       tapsRef.current.push({ target: node, t });
       progressRef.current++;
-      setProgress(progressRef.current);
-      setErrorNode(null);
       if (progressRef.current === TRAIL_SEQUENCE.length) {
         // Let the pen-up handler store the final stroke before finishing.
         setTimeout(() => finish(false), 50);
@@ -123,8 +122,6 @@ export function TrailItem({ onComplete }: ItemProps): JSX.Element {
       // Entering a future circle out of order is an error; circles already
       // completed are inert (the line legitimately passes back near them).
       tapsRef.current.push({ target: node, t });
-      setErrorNode(node);
-      setTimeout(() => setErrorNode(null), 600);
     }
   };
 
@@ -185,7 +182,6 @@ export function TrailItem({ onComplete }: ItemProps): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const doneSet = new Set(TRAIL_SEQUENCE.slice(0, progress));
   const inkStrokes = activeStroke.current
     ? [...strokesRef.current, activeStroke.current]
     : strokesRef.current;
@@ -234,28 +230,19 @@ export function TrailItem({ onComplete }: ItemProps): JSX.Element {
             strokeLinejoin="round"
           />
         ))}
-        {/* Circles */}
+        {/* Circles — no right/wrong or progress coloring (no feedback, per protocol) */}
         {Object.keys(TRAIL_POSITIONS).map((label) => {
           const p = px(label);
-          const done = doneSet.has(label as never);
-          const isError = errorNode === label;
           return (
             <g key={label} data-testid={`trail-${label}`}>
-              <circle
-                cx={p.x}
-                cy={p.y}
-                r={NODE_R}
-                fill={isError ? '#b3402a' : done ? '#2c5f7c' : '#fff'}
-                stroke={isError ? '#b3402a' : done ? '#2c5f7c' : '#23303a'}
-                strokeWidth={3}
-              />
+              <circle cx={p.x} cy={p.y} r={NODE_R} fill="#fff" stroke="#23303a" strokeWidth={3} />
               <text
                 x={p.x}
                 y={p.y + 10}
                 textAnchor="middle"
                 fontSize={30}
                 fontWeight={700}
-                fill={done || isError ? '#fff' : '#23303a'}
+                fill="#23303a"
                 style={{ pointerEvents: 'none', userSelect: 'none' }}
               >
                 {label}

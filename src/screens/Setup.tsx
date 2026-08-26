@@ -35,7 +35,7 @@ export function SetupScreen({
   };
 
   return (
-    <div className="screen" data-testid="setup">
+    <div className="screen top-align" data-testid="setup">
       <h1>Cognitive Screen — Setup</h1>
       <p className="muted">To be completed by a caregiver or clinician before handing over the iPad.</p>
       <div className="setup-form">

@@ -11,9 +11,10 @@ export function ClockItem({ onComplete }: ItemProps): JSX.Element {
   const [strokeCount, setStrokeCount] = useState(0);
   const [scoring, setScoring] = useState(false);
 
-  useRunOnce(async () => {
+  useRunOnce(async (alive) => {
     await voiceGuide.speak(
       'Now, draw a clock. Put in all the numbers, and set the time to ten past eleven. Tap Done when you are finished.',
+      alive,
     );
   });
 

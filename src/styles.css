@@ -45,6 +45,15 @@ body,
   overflow: auto;
 }
 
+/*
+ * For screens whose content can be taller than the viewport (results, setup):
+ * centered flex content overflows upward past the scroll origin and becomes
+ * unreachable, so these start from the top instead.
+ */
+.screen.top-align {
+  justify-content: flex-start;
+}
+
 h1 {
   font-size: 1.8rem;
   margin: 0;
