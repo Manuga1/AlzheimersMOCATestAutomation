@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { ConfigContext } from './configContext';
+import { DoneContext } from './doneContext';
 import { abortActiveCaptures } from './core/speechCapture';
 import { voiceGuide } from './core/voiceGuide';
 import { addResult, finalizeSession, newSession, saveSession } from './core/session';
@@ -36,11 +37,13 @@ const ITEM_ORDER: {
   id: ItemId;
   label: string;
   max: number;
+  /** Item renders its own Done button; the generic one is hidden. */
+  hasOwnDone?: boolean;
   component: (p: ItemProps) => JSX.Element;
 }[] = [
   { id: 'trail', label: 'Connecting circles', max: 1, component: TrailItem },
-  { id: 'cube', label: 'Copying a shape', max: 1, component: CubeItem },
-  { id: 'clock', label: 'Drawing a clock', max: 3, component: ClockItem },
+  { id: 'cube', label: 'Copying a shape', max: 1, hasOwnDone: true, component: CubeItem },
+  { id: 'clock', label: 'Drawing a clock', max: 3, hasOwnDone: true, component: ClockItem },
   { id: 'naming', label: 'Naming animals', max: 3, component: NamingItem },
   { id: 'registration', label: 'Remembering words', max: 0, component: RegistrationItem },
   { id: 'digitspan', label: 'Repeating numbers', max: 2, component: DigitSpanItem },
@@ -179,10 +182,46 @@ function ItemHost({
   index: number;
   onComplete: (index: number, r: ScoreResult & { response?: unknown }) => void;
 }): JSX.Element {
-  const Item = ITEM_ORDER[index].component;
+  const item = ITEM_ORDER[index];
+  const Item = item.component;
+  const doneHandler = useRef<(() => void) | null>(null);
+  const registry = useMemo(
+    () => ({
+      register: (fn: () => void) => {
+        doneHandler.current = fn;
+      },
+    }),
+    [],
+  );
+
+  // "Done — move on" is always available so the participant is never stuck.
+  // Items with partial work register their own finisher (scored as-is);
+  // otherwise the item ends with an `ended_early` flag.
+  const done = () => {
+    voiceGuide.cancel();
+    abortActiveCaptures();
+    if (doneHandler.current) {
+      doneHandler.current();
+    } else {
+      onComplete(index, {
+        score: 0,
+        max: item.max,
+        confidence: 0.5,
+        flags: ['ended_early'],
+      });
+    }
+  };
+
   return (
-    <div className="screen" data-testid={`item-${ITEM_ORDER[index].id}`}>
-      <Item onComplete={(r) => onComplete(index, r)} />
+    <div className="screen" data-testid={`item-${item.id}`}>
+      <DoneContext.Provider value={registry}>
+        <Item onComplete={(r) => onComplete(index, r)} />
+      </DoneContext.Provider>
+      {!item.hasOwnDone && (
+        <button className="secondary" data-testid="item-done" onClick={done}>
+          Done — move on
+        </button>
+      )}
     </div>
   );
 }

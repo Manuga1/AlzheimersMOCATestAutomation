@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef } from 'react';
 import type { ItemProps } from '../App';
 import { DrawingCanvas, type DrawingCanvasHandle } from '../components/DrawingCanvas';
 import { CubeModel } from '../components/references';
@@ -8,7 +8,6 @@ import { useRunOnce } from './common';
 
 export function CubeItem({ onComplete }: ItemProps): JSX.Element {
   const canvasRef = useRef<DrawingCanvasHandle>(null);
-  const [strokeCount, setStrokeCount] = useState(0);
 
   useRunOnce(async (alive) => {
     await voiceGuide.speak(
@@ -27,7 +26,7 @@ export function CubeItem({ onComplete }: ItemProps): JSX.Element {
       <p className="instruction">Copy the drawing on the left into the box on the right.</p>
       <div className="row">
         <CubeModel />
-        <DrawingCanvas ref={canvasRef} width={430} height={380} onStrokeCountChange={setStrokeCount} />
+        <DrawingCanvas ref={canvasRef} width={430} height={380} />
       </div>
       <div className="row">
         <button className="secondary" onClick={() => canvasRef.current?.undo()}>
@@ -36,7 +35,7 @@ export function CubeItem({ onComplete }: ItemProps): JSX.Element {
         <button className="secondary" onClick={() => canvasRef.current?.clear()}>
           Clear
         </button>
-        <button className="primary" data-testid="cube-done" disabled={strokeCount === 0} onClick={finish}>
+        <button className="primary" data-testid="cube-done" onClick={finish}>
           Done
         </button>
       </div>

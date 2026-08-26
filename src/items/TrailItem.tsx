@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import type { ItemProps } from '../App';
+import { DoneContext } from '../doneContext';
 import { voiceGuide } from '../core/voiceGuide';
 import type { Stroke, StrokePoint } from '../core/types';
 import { scoreTrail, TRAIL_SEQUENCE, type TrailTap } from '../scoring/trail';
@@ -81,6 +82,15 @@ export function TrailItem({ onComplete }: ItemProps): JSX.Element {
       response,
     });
   };
+
+  // The always-available Done button submits the drawing as-is: the taps so
+  // far are scored normally (incomplete pattern → 0 per MoCA rule) and the
+  // partial drawing is kept for the results-page review.
+  const doneRegistry = useContext(DoneContext);
+  useEffect(() => {
+    doneRegistry?.register(() => finish(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useRunOnce(async (alive) => {
     await voiceGuide.speak(

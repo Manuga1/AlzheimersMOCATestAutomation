@@ -285,8 +285,13 @@ test('skip button (testing aid) skips onboarding and every item', async ({ page 
   // Skip straight past onboarding.
   await page.getByTestId('skip-button').click();
 
+  // Trail: the always-available "Done — move on" button submits the (empty)
+  // drawing as-is instead of using the testing skip.
+  await expect(page.getByTestId('item-trail')).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId('item-done').click();
+
   const itemIds = [
-    'trail', 'cube', 'clock', 'naming', 'registration', 'digitspan', 'vigilance',
+    'cube', 'clock', 'naming', 'registration', 'digitspan', 'vigilance',
     'serial7', 'sentence', 'fluency', 'abstraction', 'recall', 'orientation',
   ];
   for (const id of itemIds) {
@@ -296,8 +301,10 @@ test('skip button (testing aid) skips onboarding and every item', async ({ page 
 
   await expect(page.getByTestId('results')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId('total-score')).toHaveText(/0\s*\/\s*30/);
-  // Every scored item carries the testing flag.
-  await expect(page.getByTestId('result-trail')).toContainText('skipped_for_testing');
+  // Trail ended via Done: scored normally (incomplete → 0), not flagged as a skip.
+  await expect(page.getByTestId('result-trail')).toContainText('0 / 1');
+  await expect(page.getByTestId('result-trail')).not.toContainText('skipped_for_testing');
+  // Skipped items carry the testing flag.
   await expect(page.getByTestId('result-orientation')).toContainText('skipped_for_testing');
 });
 
