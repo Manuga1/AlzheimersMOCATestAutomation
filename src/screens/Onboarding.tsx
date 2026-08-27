@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { DrawingCanvas, type DrawingCanvasHandle } from '../components/DrawingCanvas';
+import { DrawingCanvas, fitWidth, type DrawingCanvasHandle } from '../components/DrawingCanvas';
 import { voiceGuide } from '../core/voiceGuide';
 import { useRunOnce } from '../items/common';
 
@@ -25,7 +25,7 @@ export function OnboardingScreen({ onReady }: { onReady: () => void }): JSX.Elem
   const audioConfirmed = async () => {
     setStep('pen');
     await voiceGuide.speak(
-      'Good. Now pick up the pen and draw a line inside the white box. Then tap Next.',
+      'Good. Now, using the pen or your finger, draw a line inside the white box. Then tap Next.',
     );
   };
 
@@ -56,8 +56,8 @@ export function OnboardingScreen({ onReady }: { onReady: () => void }): JSX.Elem
       {step === 'pen' && (
         <>
           <h2>Pen check</h2>
-          <p className="instruction">Draw a line inside the box with your pen, then tap Next.</p>
-          <DrawingCanvas ref={canvasRef} width={500} height={220} />
+          <p className="instruction">Draw a line inside the box with your pen or finger, then tap Next.</p>
+          <DrawingCanvas ref={canvasRef} width={fitWidth(500)} height={220} />
           <button className="primary" data-testid="pen-next" onClick={penDone}>
             Next
           </button>

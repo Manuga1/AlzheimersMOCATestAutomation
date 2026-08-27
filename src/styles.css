@@ -424,3 +424,58 @@ button.secondary {
   gap: 0.8rem;
   align-items: center;
 }
+
+/* Phone layout: fit the fixed-design elements to narrow screens. */
+@media (max-width: 700px) {
+  :root {
+    font-size: 16px;
+  }
+  .screen {
+    padding: 0.8rem 0.8rem;
+  }
+  .setup-form {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+    padding: 1rem 1.1rem;
+    width: 100%;
+  }
+  .setup-form label {
+    margin-top: 0.5rem;
+  }
+  .setup-form input {
+    min-width: 0;
+    width: 100%;
+  }
+  .instruction {
+    font-size: 1.05rem;
+  }
+  h1 {
+    font-size: 1.4rem;
+    text-align: center;
+  }
+  .results-table {
+    display: block;
+    overflow-x: auto;
+    max-width: 100%;
+    font-size: 0.85rem;
+  }
+  .score-value {
+    font-size: 2.4rem;
+  }
+  .cube-model {
+    width: 40vw;
+    height: auto;
+  }
+  .review-pair svg {
+    max-width: 42vw;
+    height: auto;
+  }
+  .skip-button {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.6rem;
+  }
+  .animal-glyph svg {
+    max-width: 88vw;
+    height: auto;
+  }
+}

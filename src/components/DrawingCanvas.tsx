@@ -1,6 +1,12 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import type { Stroke, StrokePoint } from '../core/types';
 
+/** Shrink a design-size dimension to fit the current viewport width. */
+export function fitWidth(design: number, margin = 48): number {
+  if (typeof window === 'undefined') return design;
+  return Math.max(240, Math.min(design, window.innerWidth - margin));
+}
+
 export interface DrawingCanvasHandle {
   getStrokes: () => Stroke[];
   undo: () => void;
@@ -14,10 +20,12 @@ interface Props {
 }
 
 /**
- * Stylus capture surface. Accepts Apple Pencil ('pen') and mouse pointers;
- * finger touches are ignored on the canvas itself (belt-and-braces palm
- * rejection on top of iPadOS's own). Coalesced pointer events give full
- * ~240 Hz Pencil sampling with pressure.
+ * Drawing capture surface. Accepts Apple Pencil ('pen'), mouse, and finger
+ * ('touch') pointers — one at a time, with the pen taking priority over an
+ * active touch stroke (palm handling; iPadOS also suppresses touch while the
+ * Pencil is near the screen). Coalesced pointer events give full ~240 Hz
+ * Pencil sampling with pressure; each stroke records its pointerType so
+ * finger-drawn responses stay identifiable in the export.
  */
 export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function DrawingCanvas(
   { width, height, onStrokeCountChange },
@@ -26,6 +34,7 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const strokesRef = useRef<Stroke[]>([]);
   const activeRef = useRef<Stroke | null>(null);
+  const activePointerId = useRef<number | null>(null);
 
   const redraw = () => {
     const canvas = canvasRef.current;
@@ -68,14 +77,28 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
       };
     };
 
+    // Pen, mouse, and finger all draw. One pointer at a time (limits palm
+    // marks and stray multi-touch); a pen pointer takes over from an active
+    // touch stroke, since the pen is always the intended instrument.
     const down = (ev: PointerEvent) => {
-      if (ev.pointerType === 'touch') return;
+      if (activeRef.current) {
+        if (ev.pointerType === 'pen' && activeRef.current.pointerType === 'touch') {
+          activeRef.current = null; // palm landed first; the pen wins
+        } else {
+          return;
+        }
+      }
       ev.preventDefault();
-      canvas.setPointerCapture(ev.pointerId);
+      try {
+        canvas.setPointerCapture(ev.pointerId);
+      } catch {
+        /* synthetic or already-released pointer */
+      }
+      activePointerId.current = ev.pointerId;
       activeRef.current = { points: [toPoint(ev)], pointerType: ev.pointerType };
     };
     const move = (ev: PointerEvent) => {
-      if (!activeRef.current || ev.pointerType === 'touch') return;
+      if (!activeRef.current || ev.pointerId !== activePointerId.current) return;
       ev.preventDefault();
       const events =
         typeof ev.getCoalescedEvents === 'function' ? ev.getCoalescedEvents() : [ev];
@@ -85,12 +108,13 @@ export const DrawingCanvas = forwardRef<DrawingCanvasHandle, Props>(function Dra
       redraw();
     };
     const up = (ev: PointerEvent) => {
-      if (!activeRef.current || ev.pointerType === 'touch') return;
+      if (!activeRef.current || ev.pointerId !== activePointerId.current) return;
       if (activeRef.current.points.length > 1) {
         strokesRef.current = [...strokesRef.current, activeRef.current];
         onStrokeCountChange?.(strokesRef.current.length);
       }
       activeRef.current = null;
+      activePointerId.current = null;
       redraw();
     };
 

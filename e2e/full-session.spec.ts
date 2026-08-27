@@ -308,6 +308,65 @@ test('skip button (testing aid) skips onboarding and every item', async ({ page 
   await expect(page.getByTestId('result-orientation')).toContainText('skipped_for_testing');
 });
 
+test('mobile: finger drawing works and layout fits a phone screen', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installHarness(page, [], { vigilanceTaps: false });
+
+  await page.goto('/');
+  await page.getByTestId('setup-start').click();
+  await page.getByTestId('audio-ok').click();
+
+  // Complete the pen check by drawing with synthetic FINGER (touch) pointer
+  // events — proves touch input is captured as strokes.
+  await page.getByTestId('drawing-canvas').evaluate((canvas) => {
+    const rect = canvas.getBoundingClientRect();
+    const opts = (x: number, y: number): PointerEventInit => ({
+      bubbles: true,
+      pointerId: 7,
+      pointerType: 'touch',
+      isPrimary: true,
+      clientX: rect.left + x,
+      clientY: rect.top + y,
+      pressure: 0.5,
+    });
+    canvas.dispatchEvent(new PointerEvent('pointerdown', opts(20, 100)));
+    for (let x = 30; x <= 200; x += 10) {
+      canvas.dispatchEvent(new PointerEvent('pointermove', opts(x, 100)));
+    }
+    canvas.dispatchEvent(new PointerEvent('pointerup', opts(200, 100)));
+  });
+  await page.getByTestId('pen-next').click();
+  await page.getByTestId('start-test').click();
+
+  // The trail stage scales down to fit the phone viewport.
+  await expect(page.getByTestId('item-trail')).toBeVisible();
+  const svgBox = await page.getByTestId('trail-svg').boundingBox();
+  expect(svgBox).not.toBeNull();
+  expect(svgBox!.width).toBeLessThanOrEqual(390);
+
+  // No horizontal page overflow anywhere on the item screen.
+  const scrollWidth = await page.evaluate(() => document.body.scrollWidth);
+  expect(scrollWidth).toBeLessThanOrEqual(391);
+
+  // Finger-drag 1 → A on the scaled-down stage still registers the circles.
+  await dragTrail(page, ['1', 'A']);
+  await page.getByTestId('item-done').click();
+
+  // Run out the remaining items and confirm the results page renders.
+  const itemIds = [
+    'cube', 'clock', 'naming', 'registration', 'digitspan', 'vigilance',
+    'serial7', 'sentence', 'fluency', 'abstraction', 'recall', 'orientation',
+  ];
+  for (const id of itemIds) {
+    await expect(page.getByTestId(`item-${id}`)).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId('skip-button').click();
+  }
+  await expect(page.getByTestId('results')).toBeVisible({ timeout: 30_000 });
+  // Trail response recorded the two touched circles.
+  await expect(page.getByTestId('result-trail')).toContainText('0 / 1');
+});
+
 test('impaired responses produce a low score with review flags', async ({ page }) => {
   test.setTimeout(300_000);
   const now = new Date();

@@ -59,6 +59,7 @@ export function TrailItem({ onComplete }: ItemProps): JSX.Element {
   const tapsRef = useRef<TrailTap[]>([]);
   const strokesRef = useRef<Stroke[]>([]);
   const activeStroke = useRef<Stroke | null>(null);
+  const activePointerId = useRef<number | null>(null);
   const progressRef = useRef(0);
   const insideRef = useRef<string | null>(null);
   const doneRef = useRef(false);
@@ -149,17 +150,31 @@ export function TrailItem({ onComplete }: ItemProps): JSX.Element {
       };
     };
 
+    // Pen, mouse, and finger all draw — one pointer at a time, pen taking
+    // over from an active touch stroke (palm handling).
     const down = (ev: PointerEvent) => {
-      if (ev.pointerType === 'touch' || doneRef.current) return;
+      if (doneRef.current) return;
+      if (activeStroke.current) {
+        if (ev.pointerType === 'pen' && activeStroke.current.pointerType === 'touch') {
+          activeStroke.current = null; // palm landed first; the pen wins
+        } else {
+          return;
+        }
+      }
       ev.preventDefault();
-      svg.setPointerCapture(ev.pointerId);
+      try {
+        svg.setPointerCapture(ev.pointerId);
+      } catch {
+        /* synthetic or already-released pointer */
+      }
+      activePointerId.current = ev.pointerId;
       const p = toLocal(ev);
       activeStroke.current = { points: [p], pointerType: ev.pointerType };
       insideRef.current = null;
       handlePoint(p.x, p.y, p.t);
     };
     const move = (ev: PointerEvent) => {
-      if (!activeStroke.current || ev.pointerType === 'touch') return;
+      if (!activeStroke.current || ev.pointerId !== activePointerId.current) return;
       ev.preventDefault();
       const events = typeof ev.getCoalescedEvents === 'function' ? ev.getCoalescedEvents() : [ev];
       for (const e of events.length ? events : [ev]) {
@@ -170,11 +185,12 @@ export function TrailItem({ onComplete }: ItemProps): JSX.Element {
       setInkVersion((v) => v + 1);
     };
     const up = (ev: PointerEvent) => {
-      if (!activeStroke.current || ev.pointerType === 'touch') return;
+      if (!activeStroke.current || ev.pointerId !== activePointerId.current) return;
       if (activeStroke.current.points.length > 1) {
         strokesRef.current = [...strokesRef.current, activeStroke.current];
       }
       activeStroke.current = null;
+      activePointerId.current = null;
       insideRef.current = null;
       setInkVersion((v) => v + 1);
     };
@@ -204,10 +220,8 @@ export function TrailItem({ onComplete }: ItemProps): JSX.Element {
       <svg
         ref={svgRef}
         className="trail-stage"
-        width={STAGE_W}
-        height={STAGE_H}
         viewBox={`0 0 ${STAGE_W} ${STAGE_H}`}
-        style={{ touchAction: 'none' }}
+        style={{ touchAction: 'none', width: '100%', maxWidth: STAGE_W, height: 'auto' }}
         data-testid="trail-svg"
       >
         {/* Dotted example guides over the first two segments */}
