@@ -52,6 +52,16 @@ async function drawStroke(page: Page, canvas: Locator, pts: [number, number][]):
   await page.mouse.up();
 }
 
+/**
+ * No item auto-advances: once its flow finishes, the result is staged and the
+ * Done button lights up (data-ready). Wait for that, then click to move on.
+ */
+async function advance(page: Page): Promise<void> {
+  const btn = page.getByTestId('item-done');
+  await expect(btn).toHaveAttribute('data-ready', 'true', { timeout: 180_000 });
+  await btn.click();
+}
+
 /** Drag the pen through the trail circles in the given label order. */
 async function dragTrail(page: Page, labels: string[]): Promise<void> {
   const centers: { x: number; y: number }[] = [];
@@ -209,6 +219,7 @@ test('complete hands-free session scores 30/30', async ({ page }) => {
   await expect(page.getByTestId('trail-guide-1-A')).toBeVisible();
   await expect(page.getByTestId('trail-guide-A-2')).toBeVisible();
   await dragTrail(page, ['1', 'A', '2', 'B', '3', 'C', '4', 'D', '5', 'E']);
+  await advance(page); // completing the pattern stages the result; Done submits
 
   // --- 2. Cube copy
   await expect(page.getByTestId('item-cube')).toBeVisible();
@@ -228,9 +239,16 @@ test('complete hands-free session scores 30/30', async ({ page }) => {
   }
   await page.getByTestId('clock-done').click();
 
-  // --- 4-13. Speech-driven items run hands-free via the mock recognizer;
-  // vigilance taps itself via the caption observer. Wait for the results.
-  await expect(page.getByTestId('results')).toBeVisible({ timeout: 240_000 });
+  // --- 4-13. Speech-driven items run via the mock recognizer; each one now
+  // waits for a Done tap once its flow finishes.
+  for (const id of [
+    'naming', 'registration', 'digitspan', 'vigilance', 'serial7',
+    'sentence', 'fluency', 'abstraction', 'recall', 'orientation',
+  ]) {
+    await expect(page.getByTestId(`item-${id}`)).toBeVisible({ timeout: 60_000 });
+    await advance(page);
+  }
+  await expect(page.getByTestId('results')).toBeVisible({ timeout: 60_000 });
 
   // --- Assertions: per-item scores
   const expectRow = async (item: string, text: string) => {
@@ -430,6 +448,7 @@ test('impaired responses produce a low score with review flags', async ({ page }
   // Trail: dragging into two wrong circles in a row → 0, then finish.
   await expect(page.getByTestId('item-trail')).toBeVisible();
   await dragTrail(page, ['1', '2', '3', 'A', '2', 'B', '3', 'C', '4', 'D', '5', 'E']);
+  await advance(page);
 
   // Cube: a flat square is not a cube → 0.
   const cubeCanvas = page.getByTestId('item-cube').getByTestId('drawing-canvas');
@@ -449,8 +468,16 @@ test('impaired responses produce a low score with review flags', async ({ page }
   await drawStroke(page, clockCanvas, clockStrokes()[0]);
   await page.getByTestId('clock-done').click();
 
-  // Vigilance receives no taps at all → 11 misses → 0.
-  await expect(page.getByTestId('results')).toBeVisible({ timeout: 240_000 });
+  // Remaining items (vigilance receives no taps at all → 11 misses → 0);
+  // each waits for its Done tap.
+  for (const id of [
+    'naming', 'registration', 'digitspan', 'vigilance', 'serial7',
+    'sentence', 'fluency', 'abstraction', 'recall', 'orientation',
+  ]) {
+    await expect(page.getByTestId(`item-${id}`)).toBeVisible({ timeout: 60_000 });
+    await advance(page);
+  }
+  await expect(page.getByTestId('results')).toBeVisible({ timeout: 60_000 });
 
   await expect(page.getByTestId('result-trail')).toContainText('0 / 1');
   await expect(page.getByTestId('result-cube')).toContainText('0 / 1');

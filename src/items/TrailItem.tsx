@@ -34,8 +34,6 @@ const GUIDED_SEGMENTS: [string, string][] = [
   ['A', '2'],
 ];
 
-const TIME_LIMIT_MS = 90000;
-
 export interface TrailResponse {
   taps: TrailTap[];
   strokes: Stroke[];
@@ -63,13 +61,11 @@ export function TrailItem({ onComplete }: ItemProps): JSX.Element {
   const progressRef = useRef(0);
   const insideRef = useRef<string | null>(null);
   const doneRef = useRef(false);
-  const timerRef = useRef<number | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
   const finish = (timedOut: boolean) => {
     if (doneRef.current) return;
     doneRef.current = true;
-    if (timerRef.current) clearTimeout(timerRef.current);
     // Include the in-flight stroke: the pattern completes while the pen is
     // still down on the final circle.
     const strokes = activeStroke.current
@@ -93,14 +89,13 @@ export function TrailItem({ onComplete }: ItemProps): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // No auto-advance and no time-limit cutoff: the participant works at their
+  // own pace and only the Done button submits (timing data lives in the
+  // recorded tap/stroke timestamps).
   useRunOnce(async (alive) => {
     await voiceGuide.speak(
       'Please draw a line going from a number to a letter, in increasing order, using the pen. Begin at the circle marked one, and trace over the dotted line to A, and then to two. Then continue on your own: draw from two to B, and keep switching between numbers and letters until you reach the circle marked E.',
       alive,
-    );
-    timerRef.current = window.setTimeout(
-      () => finish(true),
-      TIME_LIMIT_MS * (window.__ttsTimeScale ?? 1),
     );
   });
 

@@ -185,6 +185,12 @@ function ItemHost({
   const item = ITEM_ORDER[index];
   const Item = item.component;
   const doneHandler = useRef<(() => void) | null>(null);
+  // No task ever advances on its own: when an item's flow finishes, its
+  // result is STAGED here and the participant advances by tapping Done.
+  // (Cube/clock render their own Done button, so their click IS the
+  // submission and they bypass staging.)
+  const stagedRef = useRef<(ScoreResult & { response?: unknown }) | null>(null);
+  const [ready, setReady] = useState(false);
   const registry = useMemo(
     () => ({
       register: (fn: () => void) => {
@@ -194,14 +200,26 @@ function ItemHost({
     [],
   );
 
+  const itemComplete = (r: ScoreResult & { response?: unknown }) => {
+    if (item.hasOwnDone) {
+      onComplete(index, r);
+    } else {
+      stagedRef.current = r;
+      setReady(true);
+    }
+  };
+
   // "Done — move on" is always available so the participant is never stuck.
-  // Items with partial work register their own finisher (scored as-is);
-  // otherwise the item ends with an `ended_early` flag.
+  // Priority: a staged result (flow finished) → the item's registered
+  // finisher (scores partial work, staging synchronously) → `ended_early`.
   const done = () => {
     voiceGuide.cancel();
     abortActiveCaptures();
-    if (doneHandler.current) {
+    if (!stagedRef.current && doneHandler.current) {
       doneHandler.current();
+    }
+    if (stagedRef.current) {
+      onComplete(index, stagedRef.current);
     } else {
       onComplete(index, {
         score: 0,
@@ -215,10 +233,15 @@ function ItemHost({
   return (
     <div className="screen" data-testid={`item-${item.id}`}>
       <DoneContext.Provider value={registry}>
-        <Item onComplete={(r) => onComplete(index, r)} />
+        <Item onComplete={itemComplete} />
       </DoneContext.Provider>
       {!item.hasOwnDone && (
-        <button className="secondary" data-testid="item-done" onClick={done}>
+        <button
+          className={ready ? 'primary item-done ready' : 'secondary item-done'}
+          data-testid="item-done"
+          data-ready={ready ? 'true' : 'false'}
+          onClick={done}
+        >
           Done — move on
         </button>
       )}

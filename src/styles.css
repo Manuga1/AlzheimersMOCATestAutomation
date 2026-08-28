@@ -125,6 +125,10 @@ button.secondary {
   cursor: pointer;
 }
 
+.item-done.ready {
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
 .caption-bar.idle {
   background: #3d4d59;
   color: #c6d2da;
